@@ -67,7 +67,8 @@ FastMultipole.strength_dims(::GravitationalSystem) = 1
 FastMultipole.get_n_bodies(system::GravitationalSystem) = length(system.bodies)
 FastMultipole.has_vector_potential(::GravitationalSystem) = false
 FastMultipole.body_to_multipole!(system::GravitationalSystem, args...) =
-    FastMultipole.body_to_multipole!(Point{Source}, system, args...; scale_strength = -1.0)
+FastMultipole.body_to_multipole!(Point{Source}, system, args...; scale_strength = -1.0)
+FastMultipole.get_previous_influence(::GravitationalSystem, i) = nothing
 
 function FastMultipole.direct!(target_buffer, target_index,
                               switch::FastMultipole.DerivativesSwitch{PS,GS,HS},
@@ -89,8 +90,10 @@ function FastMultipole.direct!(target_buffer, target_index,
                             (4π * r2 * r)
             end
         end
-        # Write directly to the buffer, NOT to a .potential field
-        GS && FastMultipole.set_gradient!(target_buffer, switch, j_target, gradient)
+        
+        # FIXED: Removed the 'switch' argument. 
+        # set_gradient! only needs the buffer, index, and value.
+        GS && FastMultipole.set_gradient!(target_buffer, j_target, gradient)
     end
 end
 
