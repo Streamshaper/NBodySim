@@ -69,25 +69,28 @@ FastMultipole.has_vector_potential(::GravitationalSystem) = false
 FastMultipole.body_to_multipole!(system::GravitationalSystem, args...) =
     FastMultipole.body_to_multipole!(Point{Source}, system, args...; scale_strength = -1.0)
 
-function FastMultipole.direct!(target_system, target_index,
+function FastMultipole.direct!(target_buffer, target_index,
                               switch::FastMultipole.DerivativesSwitch{PS,GS,HS},
                               source_system::GravitationalSystem, source_buffer,
                               source_index) where {PS,GS,HS}
     @inbounds for j_target in target_index
-        target_x, target_y, target_z = FastMultipole.get_position(target_system, j_target)
-        gradient = zero(SVector{3,eltype(target_system)})
+        target_x, target_y, target_z = FastMultipole.get_position(target_buffer, j_target)
+        gradient = zero(SVector{3,eltype(target_buffer)})
+        
         @inbounds for i_source in source_index
             source_x, source_y, source_z = FastMultipole.get_position(source_buffer, i_source)
             source_strength = FastMultipole.get_strength(source_buffer, source_system, i_source)[1]
             dx, dy, dz = target_x - source_x, target_y - source_y, target_z - source_z
             r2 = dx * dx + dy * dy + dz * dz
+            
             if r2 > 0
                 r = sqrt(r2)
                 gradient -= SVector{3}(dx, dy, dz) * source_strength /
                             (4π * r2 * r)
             end
         end
-        GS && FastMultipole.set_gradient!(target_system, switch, j_target, gradient)
+        # Write directly to the buffer, NOT to a .potential field
+        GS && FastMultipole.set_gradient!(target_buffer, switch, j_target, gradient)
     end
 end
 
