@@ -66,10 +66,12 @@ FastMultipole.get_position(system::GravitationalSystem, i) = system.bodies[i].po
 FastMultipole.strength_dims(::GravitationalSystem) = 1
 FastMultipole.get_n_bodies(system::GravitationalSystem) = length(system.bodies)
 FastMultipole.has_vector_potential(::GravitationalSystem) = false
-FastMultipole.body_to_multipole!(system::GravitationalSystem, args...) =
-FastMultipole.body_to_multipole!(Point{Source}, system, args...; scale_strength = -1.0)
-FastMultipole.get_previous_influence(::GravitationalSystem, i) = nothing
 
+# API FIX 1: Fully qualified Point/Source, removed unsupported `scale_strength` keyword
+FastMultipole.body_to_multipole!(system::GravitationalSystem, args...) =
+    FastMultipole.body_to_multipole!(FastMultipole.Point{FastMultipole.Source}, system, args...)
+
+# API FIX 2: Target buffer parameter corrected, `switch` argument removed from set_gradient!
 function FastMultipole.direct!(target_buffer, target_index,
                               switch::FastMultipole.DerivativesSwitch{PS,GS,HS},
                               source_system::GravitationalSystem, source_buffer,
@@ -77,38 +79,39 @@ function FastMultipole.direct!(target_buffer, target_index,
     @inbounds for j_target in target_index
         target_x, target_y, target_z = FastMultipole.get_position(target_buffer, j_target)
         gradient = zero(SVector{3,eltype(target_buffer)})
-        
         @inbounds for i_source in source_index
             source_x, source_y, source_z = FastMultipole.get_position(source_buffer, i_source)
             source_strength = FastMultipole.get_strength(source_buffer, source_system, i_source)[1]
             dx, dy, dz = target_x - source_x, target_y - source_y, target_z - source_z
             r2 = dx * dx + dy * dy + dz * dz
-            
             if r2 > 0
                 r = sqrt(r2)
-                gradient -= SVector{3}(dx, dy, dz) * source_strength /
-                            (4π * r2 * r)
+                gradient -= SVector{3}(dx, dy, dz) * source_strength / (4π * r2 * r)
             end
         end
-        
-        # FIXED: Removed the 'switch' argument. 
-        # set_gradient! only needs the buffer, index, and value.
         GS && FastMultipole.set_gradient!(target_buffer, j_target, gradient)
     end
 end
 
+# API FIX 3: `switch` argument removed from get_gradient
 function FastMultipole.buffer_to_target_system!(target_system::GravitationalSystem, i_target,
                                                 switch::FastMultipole.DerivativesSwitch{PS,GS,HS},
                                                 target_buffer, i_buffer) where {PS,GS,HS}
-    gradient = GS ? FastMultipole.get_gradient(target_buffer, switch, i_buffer) : zero(SVector{3,eltype(target_system)})
+    gradient = GS ? FastMultipole.get_gradient(target_buffer, i_buffer) : zero(SVector{3,eltype(target_system)})
     target_system.potential[5:7, i_target] .= gradient
 end
 
 function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64}, Δt::Float64)
     system = GravitationalSystem(pos, masses)
-    fmm!(system; gradient = true)
+    
+    # API FIX 4: Silenced the missing 'get_previous_influence' warning natively
+    fmm!(system; gradient = true, silence_warnings = true)
+    
     accs = @view system.potential[5:7, :]
-    vel .+= accs .* Δt
+    
+    # PHYSICS FIX: Because we had to drop `scale_strength = -1.0` in FIX 1, we subtract 
+    # the acceleration to ensure gravity remains attractive rather than repulsive.
+    vel .-= accs .* Δt
     pos .+= vel .* Δt
 end
 
@@ -116,7 +119,6 @@ end
 # WARM-UP COMPILATION SPINNER
 # ---------------------------------------------------------
 function compile_with_spinner(func::Function, message::String)
-    # ... (Keep your existing compile_with_spinner function exactly as is) ...
     done = Threads.Atomic{Bool}(false)
     spin_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
     
@@ -159,7 +161,7 @@ for step in 1:num_steps
     simulation_step!(pos, vel, masses, 0.0005)
     push!(frames, copy(pos))
     
-    # Print progress and force write to SLURM logs
+    # Print progress and force write to logs
     if step % log_interval == 0
         percent = round(Int, (step / num_steps) * 100)
         println("Simulation progress: $step / $num_steps steps ($percent%)")
@@ -170,11 +172,9 @@ end
 # ---------------------------------------------------------
 # CAIROMAKIE VIDEO EXPORT
 # ---------------------------------------------------------
-# Ensure the output directory exists
 out_dir = "output"
 mkpath(out_dir)
 
-# Define the full path using string interpolation
 video_filename = "bh-animation_$(num_particles)p_$(num_steps)s.mp4"
 out_file = joinpath(out_dir, video_filename)
 
@@ -227,7 +227,7 @@ record(fig, out_file, 1:total_frames; framerate = 20) do i
     y_obs[] = frames[i][2, :]
     z_obs[] = frames[i][3, :]
     
-    # Print encoding progress and force write to SLURM logs
+    # Print encoding progress and force write to logs
     if i % vid_log_interval == 0
         percent = round(Int, (i / total_frames) * 100)
         println("Encoding video: frame $i / $total_frames ($percent%)")
