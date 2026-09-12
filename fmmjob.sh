@@ -17,4 +17,4 @@ module load julia/1.11.3
 export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # Run your Julia script
-julia --project=~/Julia/NBodySim/ -t $SLURM_CPUS_PER_TASK barneshut.jl
+julia --project=~/Julia/NBodySim/ -t $SLURM_CPUS_PER_TASK fmm.jl
