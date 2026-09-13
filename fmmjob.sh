@@ -16,5 +16,6 @@ module load julia/1.11.3
 # Use all allocated CPUs through MPI plus Julia threads
 export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-# Launch one Julia process per allocated MPI task
-srun --ntasks-per-node=1 julia --project=~/Julia/NBodySim/ -t $SLURM_CPUS_PER_TASK fmm.jl
+# Launch one Julia process per allocated MPI task and connect all tasks to one MPI world.
+srun --mpi=pmi2 --ntasks="$SLURM_NTASKS" --ntasks-per-node=1 \
+	julia --project=~/Julia/NBodySim/ -t "$SLURM_CPUS_PER_TASK" fmm.jl

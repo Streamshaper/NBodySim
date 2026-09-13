@@ -148,6 +148,14 @@ const MPI_COMM = MPI.COMM_WORLD
 const MPI_RANK = MPI.Comm_rank(MPI_COMM)
 const MPI_SIZE = MPI.Comm_size(MPI_COMM)
 
+if haskey(ENV, "SLURM_NTASKS")
+    expected_mpi_size = parse(Int, ENV["SLURM_NTASKS"])
+    MPI_SIZE == expected_mpi_size || error(
+        "MPI world has $MPI_SIZE ranks, but Slurm allocated $expected_mpi_size tasks. " *
+        "Launch this job with an MPI-enabled srun command."
+    )
+end
+
 # ---------------------------------------------------------
 # WARM-UP COMPILATION SPINNER
 # ---------------------------------------------------------
