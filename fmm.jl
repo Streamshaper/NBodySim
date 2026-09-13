@@ -3,6 +3,7 @@ using DrWatson
 
 using BenchmarkTools, Random, DataFrames, ColorSchemes, Colors, ProgressMeter, CairoMakie
 using Printf
+using MPI
 using FastMultipole
 using FastMultipole.StaticArrays: SVector, SMatrix
 
@@ -116,6 +117,37 @@ function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Ve
     pos .+= vel .* Δt
 end
 
+function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
+    base, remainder = divrem(n_particles, n_ranks)
+    first_particle = rank * base + min(rank, remainder) + 1
+    last_particle = first_particle + base - 1 + (rank < remainder)
+    return first_particle:last_particle
+end
+
+function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
+                             Δt::Float64, comm, rank::Int, n_ranks::Int)
+    system = GravitationalSystem(pos, masses)
+    fmm!(system; gradient = true, silence_warnings = true)
+
+    local_pos = zeros(size(pos))
+    local_vel = zeros(size(vel))
+    local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
+    accs = @view system.potential[5:7, :]
+
+    Threads.@threads for i in local_range
+        local_vel[:, i] .= vel[:, i] .- accs[:, i] .* Δt
+        local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* Δt
+    end
+
+    MPI.Allreduce!(local_pos, pos, +, comm)
+    MPI.Allreduce!(local_vel, vel, +, comm)
+end
+
+MPI.Init()
+const MPI_COMM = MPI.COMM_WORLD
+const MPI_RANK = MPI.Comm_rank(MPI_COMM)
+const MPI_SIZE = MPI.Comm_size(MPI_COMM)
+
 # ---------------------------------------------------------
 # WARM-UP COMPILATION SPINNER
 # ---------------------------------------------------------
@@ -138,9 +170,15 @@ function compile_with_spinner(func::Function, message::String)
     wait(spinner_task)
 end
 
-compile_with_spinner("Compiling physics functions...") do
+warmup = () -> begin
     warm_pos, warm_vel, warm_mass = rand(3, 2), rand(3, 2), [0.5, 0.5]
     simulation_step!(warm_pos, warm_vel, warm_mass, 0.0005)
+end
+
+if MPI_RANK == 0
+    compile_with_spinner(warmup, "Compiling physics functions...")
+else
+    warmup()
 end
 
 # ---------------------------------------------------------
@@ -150,21 +188,32 @@ frames = Vector{Matrix{Float64}}()
 num_particles = 1000
 num_steps = 1000
 
-pos, vel, masses = rand_particles(num_particles)
-push!(frames, copy(pos)) # Push initial state (t=0)
+pos, vel, masses = MPI_RANK == 0 ? rand_particles(num_particles) :
+                                  (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles))
+MPI.Bcast!(pos, 0, MPI_COMM)
+MPI.Bcast!(vel, 0, MPI_COMM)
+MPI.Bcast!(masses, 0, MPI_COMM)
 
-println("Starting Galaxy Simulation...")
-flush(stdout)
+if MPI_RANK == 0
+    push!(frames, copy(pos)) # Push initial state (t=0)
+end
+
+if MPI_RANK == 0
+    println("Starting Galaxy Simulation with $MPI_SIZE MPI ranks...")
+    flush(stdout)
+end
 
 log_interval = max(1, num_steps ÷ 10) # Log every 10%
 
 simulation_time = @elapsed begin
     for step in 1:num_steps
-        simulation_step!(pos, vel, masses, 0.0005)
-        push!(frames, copy(pos))
+        simulation_step_mpi!(pos, vel, masses, 0.0005, MPI_COMM, MPI_RANK, MPI_SIZE)
+        if MPI_RANK == 0
+            push!(frames, copy(pos))
+        end
 
         # Print progress and force write to logs
-        if step % log_interval == 0
+        if MPI_RANK == 0 && step % log_interval == 0
             percent = round(Int, (step / num_steps) * 100)
             println("Simulation progress: $step / $num_steps steps ($percent%)")
             flush(stdout)
@@ -172,9 +221,12 @@ simulation_time = @elapsed begin
     end
 end
 
-println("Total simulation time: $simulation_time seconds")
-flush(stdout)
+if MPI_RANK == 0
+    println("Total simulation time: $simulation_time seconds")
+    flush(stdout)
+end
 
+if MPI_RANK == 0
 # ---------------------------------------------------------
 # CAIROMAKIE VIDEO EXPORT
 # ---------------------------------------------------------
@@ -256,5 +308,11 @@ open(stopwatch_file, "a+") do io
     if filesize(stopwatch_file) == 0
         println(io, "type,node_count,core_count,simulation_time,encoding_time")
     end
-    println(io, "FMM,$node_count,$core_count,$( @sprintf(\"%.2f\", simulation_time) ),$( @sprintf(\"%.2f\", video_encoding_time) )")
+    simulation_time_string = @sprintf("%.2f", simulation_time)
+    encoding_time_string = @sprintf("%.2f", video_encoding_time)
+    println(io, "FMM,$node_count,$core_count,$simulation_time_string,$encoding_time_string")
 end
+end
+
+MPI.Barrier(MPI_COMM)
+MPI.Finalize()
