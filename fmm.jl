@@ -2,6 +2,7 @@ using DrWatson
 @quickactivate "AHRB"
 
 using BenchmarkTools, Random, DataFrames, ColorSchemes, Colors, ProgressMeter, CairoMakie
+using Printf
 using FastMultipole
 using FastMultipole.StaticArrays: SVector, SMatrix
 
@@ -249,11 +250,11 @@ flush(stdout)
 stopwatch_file = joinpath("logs", "stopwatch.csv")
 mkpath(dirname(stopwatch_file))
 core_count = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", string(Sys.CPU_THREADS)))
-thread_count_total = Threads.nthreads()
+node_count = parse(Int, get(ENV, "SLURM_JOB_NUM_NODES", "1"))
 
 open(stopwatch_file, "a+") do io
     if filesize(stopwatch_file) == 0
-        println(io, "type,core_count,thread_count_total,simulation_time,encoding_time")
+        println(io, "type,node_count,core_count,simulation_time,encoding_time")
     end
-    println(io, "FMM,$core_count,$thread_count_total,$simulation_time,$video_encoding_time")
+    println(io, "FMM,$node_count,$core_count,$( @sprintf(\"%.2f\", simulation_time) ),$( @sprintf(\"%.2f\", video_encoding_time) )")
 end
