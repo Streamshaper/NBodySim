@@ -126,17 +126,19 @@ end
 
 function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
                              Δt::Float64, comm, rank::Int, n_ranks::Int)
-    system = GravitationalSystem(pos, masses)
-    fmm!(system; gradient = true, silence_warnings = true)
-
     local_pos = zeros(size(pos))
     local_vel = zeros(size(vel))
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
-    accs = @view system.potential[5:7, :]
+    source_system = GravitationalSystem(pos, masses)
+    target_system = GravitationalSystem(pos[:, local_range], masses[local_range])
+    fmm!(target_system, source_system; gradient = true, silence_warnings = true)
 
-    Threads.@threads for i in local_range
-        local_vel[:, i] .= vel[:, i] .- accs[:, i] .* Δt
-        local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* Δt
+    accs = @view target_system.potential[5:7, :]
+
+    Threads.@threads for local_index in eachindex(local_range)
+        global_index = local_range[local_index]
+        local_vel[:, global_index] .= vel[:, global_index] .- accs[:, local_index] .* Δt
+        local_pos[:, global_index] .= pos[:, global_index] .+ local_vel[:, global_index] .* Δt
     end
 
     MPI.Allreduce!(local_pos, pos, +, comm)
