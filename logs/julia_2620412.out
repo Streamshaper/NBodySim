@@ -1,0 +1,27 @@
+[KCompiling physics functions... ⠋[KCompiling physics functions... Done! ✨
+Starting Galaxy Simulation with 1 MPI ranks...
+Simulation progress: 20 / 200 steps (10%)
+Simulation progress: 40 / 200 steps (20%)
+Simulation progress: 60 / 200 steps (30%)
+Simulation progress: 80 / 200 steps (40%)
+Simulation progress: 100 / 200 steps (50%)
+Simulation progress: 120 / 200 steps (60%)
+Simulation progress: 140 / 200 steps (70%)
+Simulation progress: 160 / 200 steps (80%)
+Simulation progress: 180 / 200 steps (90%)
+Simulation progress: 200 / 200 steps (100%)
+Total simulation time: 2.959927242 seconds
+Setting up CairoMakie animation...
+Starting video encoding to output/bh-animation_1000p_200s.mp4 ...
+Encoding video: frame 20 / 201 (10%)
+Encoding video: frame 40 / 201 (20%)
+Encoding video: frame 60 / 201 (30%)
+Encoding video: frame 80 / 201 (40%)
+Encoding video: frame 100 / 201 (50%)
+Encoding video: frame 120 / 201 (60%)
+Encoding video: frame 140 / 201 (70%)
+Encoding video: frame 160 / 201 (80%)
+Encoding video: frame 180 / 201 (90%)
+Encoding video: frame 200 / 201 (100%)
+Total video encoding time: 27.364226453 seconds
+Saved output/bh-animation_1000p_200s.mp4 successfully!

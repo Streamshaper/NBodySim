@@ -187,7 +187,7 @@ end
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
 num_particles = 1000
-num_steps = 1000
+num_steps = 200
 
 pos, vel, masses = MPI_RANK == 0 ? rand_particles(num_particles) :
                                   (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles))

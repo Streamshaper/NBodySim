@@ -2,7 +2,7 @@
 #SBATCH --job-name=julia_job       # Name of your job
 #SBATCH --output=logs/julia_%j.out       # Output log (%j will be replaced by Job ID)
 #SBATCH --error=logs/julia_%j.err        # Error log
-#SBATCH --nodes=2                   # Number of nodes
+#SBATCH --nodes=1                   # Number of nodes
 #SBATCH --ntasks-per-node=1         # Keep ranks distributed across nodes
 #SBATCH --cpus-per-task=8           # Number of Julia threads per MPI rank
 #SBATCH --time=00:20:00             # Maximum run time (HH:MM:SS)
