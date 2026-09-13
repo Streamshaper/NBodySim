@@ -161,20 +161,25 @@ flush(stdout)
 
 log_interval = max(1, num_steps ÷ 10) # Log every 10%
 
-for step in 1:num_steps
-    tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
+simulation_time = @elapsed begin
+    for step in 1:num_steps
+        tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
 
-    update_mass_com!(tree, masses)
-    simulation_step!(pos, vel, masses, tree, 0.0005, 0.5)
-    push!(frames, copy(pos))
-    
-    # Print progress and force write to SLURM logs
-    if step % log_interval == 0
-        percent = round(Int, (step / num_steps) * 100)
-        println("Simulation progress: $step / $num_steps steps ($percent%)")
-        flush(stdout)
+        update_mass_com!(tree, masses)
+        simulation_step!(pos, vel, masses, tree, 0.0005, 0.5)
+        push!(frames, copy(pos))
+        
+        # Print progress and force write to SLURM logs
+        if step % log_interval == 0
+            percent = round(Int, (step / num_steps) * 100)
+            println("Simulation progress: $step / $num_steps steps ($percent%)")
+            flush(stdout)
+        end
     end
 end
+
+println("Total simulation time: $simulation_time seconds")
+flush(stdout)
 
 # ---------------------------------------------------------
 # CAIROMAKIE VIDEO EXPORT
@@ -231,18 +236,33 @@ vid_log_interval = max(1, total_frames ÷ 10)
 println("Starting video encoding to $out_file ...")
 flush(stdout)
 
-record(fig, out_file, 1:total_frames; framerate = 20) do i
-    x_obs[] = frames[i][1, :]
-    y_obs[] = frames[i][2, :]
-    z_obs[] = frames[i][3, :]
-    
-    # Print encoding progress and force write to SLURM logs
-    if i % vid_log_interval == 0
-        percent = round(Int, (i / total_frames) * 100)
-        println("Encoding video: frame $i / $total_frames ($percent%)")
-        flush(stdout)
+video_encoding_time = @elapsed begin
+    record(fig, out_file, 1:total_frames; framerate = 20) do i
+        x_obs[] = frames[i][1, :]
+        y_obs[] = frames[i][2, :]
+        z_obs[] = frames[i][3, :]
+        
+        # Print encoding progress and force write to SLURM logs
+        if i % vid_log_interval == 0
+            percent = round(Int, (i / total_frames) * 100)
+            println("Encoding video: frame $i / $total_frames ($percent%)")
+            flush(stdout)
+        end
     end
 end
 
+println("Total video encoding time: $video_encoding_time seconds")
 println("Saved $out_file successfully!")
 flush(stdout)
+
+stopwatch_file = joinpath("logs", "stopwatch.csv")
+mkpath(dirname(stopwatch_file))
+core_count = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", string(Sys.CPU_THREADS)))
+thread_count_total = Threads.nthreads()
+
+open(stopwatch_file, "a+") do io
+    if filesize(stopwatch_file) == 0
+        println(io, "type,core_count,thread_count_total,simulation_time,encoding_time")
+    end
+    println(io, "Barnes_Hut,$core_count,$thread_count_total,$simulation_time,$video_encoding_time")
+end
