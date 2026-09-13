@@ -1,0 +1,5 @@
+type,node_count,core_count,simulation_time,encoding_time
+FMM,2,8,11.46,122.15
+FMM,2,8,11.52,119.60
+B_H,2,8,30.35,119.42
+B_H,2,8,29.10,121.00

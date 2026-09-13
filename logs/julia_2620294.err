@@ -1,0 +1,200 @@
+ERROR: LoadError: ArgumentError: Package MPI not found in current path.
+- Run `import Pkg; Pkg.add("MPI")` to install the MPI package.
+Stacktrace:
+ [1] macro expansion
+   @ ./loading.jl:2296 [inlined]
+ [2] macro expansion
+   @ ./lock.jl:273 [inlined]
+ [3] __require(into::Module, mod::Symbol)
+   @ Base ./loading.jl:2271
+ [4] #invoke_in_world#3
+   @ ./essentials.jl:1089 [inlined]
+ [5] invoke_in_world
+   @ ./essentials.jl:1086 [inlined]
+ [6] require(into::Module, mod::Symbol)
+   @ Base ./loading.jl:2260
+in expression starting at /home/s/stavross/Julia/NBodySim/barneshut.jl:6
+srun: error: cn7: task 0: Exited with exit code 1
+srun: Terminating StepId=2620294.0
+
+[1774007] signal 15: Terminated
+in expression starting at /home/s/stavross/Julia/NBodySim/barneshut.jl:4
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+jl_parallel_gc_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:148
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+jl_parallel_gc_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:148
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+jl_parallel_gc_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:148
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+task_done_hook at ./task.jl:694
+jfptr_task_done_hook_66750 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_finish_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:319
+jl_threadfun at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:208
+start_thread at /lib64/libc.so.6 (unknown line)
+__GI___clone3 at /lib64/libc.so.6 (unknown line)
+unknown function (ip: (nil))
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /tmp/alcharal/spack-stage-libuv-julia-1.48.0-jjj2b2debrna3du5e6n3e3ycefaqyfs7/spack-src/src/unix/thread.c:822
+ijl_task_get_next at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/scheduler.c:584
+poptask at ./task.jl:1012
+wait at ./task.jl:1021
+#wait#731 at ./condition.jl:130
+wait at ./condition.jl:125 [inlined]
+#138 at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/usr/share/julia/stdlib/v1.11/Distributed/src/remotecall.jl:281 [inlined]
+lock at ./lock.jl:232
+lock at ./condition.jl:78 [inlined]
+#137 at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/usr/share/julia/stdlib/v1.11/Distributed/src/remotecall.jl:279
+unknown function (ip: 0x7f923a2477bf)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+start_task at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/task.c:1202
+unknown function (ip: (nil))
+ijl_subtype at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/subtype.c:2226
+ijl_type_union at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/jltypes.c:622
+intersect_all at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/subtype.c:4228
+jl_type_intersection_env_s at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/subtype.c:4445
+jl_method_table_activate at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/gf.c:2138
+jl_activate_methods at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/staticdata_utils.c:928 [inlined]
+jl_restore_package_image_from_stream at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/staticdata.c:3683
+jl_restore_incremental_from_buf at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/staticdata.c:3727
+ijl_restore_package_image_from_file at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/staticdata.c:3818
+#_include_from_serialized#1082 at ./loading.jl:1245
+_include_from_serialized at ./loading.jl:1210 [inlined]
+_include_from_serialized at ./loading.jl:1210 [inlined]
+#_require_search_from_serialized#1105 at ./loading.jl:2041
+_require_search_from_serialized at ./loading.jl:1969
+jfptr__require_search_from_serialized_44941 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+_require at ./loading.jl:2527
+__require_prelocked at ./loading.jl:2388
+jfptr___require_prelocked_71413 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_f__call_in_world at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/builtins.c:894
+#invoke_in_world#3 at ./essentials.jl:1089 [inlined]
+invoke_in_world at ./essentials.jl:1086 [inlined]
+_require_prelocked at ./loading.jl:2375
+macro expansion at ./loading.jl:2314 [inlined]
+macro expansion at ./lock.jl:273 [inlined]
+__require at ./loading.jl:2271
+jfptr___require_71344 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+jl_f__call_in_world at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/builtins.c:894
+#invoke_in_world#3 at ./essentials.jl:1089 [inlined]
+invoke_in_world at ./essentials.jl:1086 [inlined]
+require at ./loading.jl:2260
+jfptr_require_71341 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+call_require at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/toplevel.c:486 [inlined]
+eval_import_path at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/toplevel.c:523
+jl_toplevel_eval_flex at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/toplevel.c:759
+jl_toplevel_eval_flex at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/toplevel.c:886
+ijl_toplevel_eval_in at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/toplevel.c:994
+eval at ./boot.jl:430 [inlined]
+include_string at ./loading.jl:2734
+_include at ./loading.jl:2794
+include at ./Base.jl:557
+jfptr_include_46939 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+exec_options at ./client.jl:323
+_start at ./client.jl:531
+jfptr__start_73652 at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/lib/julia/sys.so (unknown line)
+jl_apply at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/julia.h:2157 [inlined]
+true_main at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/jlapi.c:900
+jl_repl_entrypoint at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/src/jlapi.c:1059
+main at /tmp/alcharal/spack-stage-julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/spack-src/cli/loader_exe.c:58
+__libc_start_call_main at /lib64/libc.so.6 (unknown line)
+__libc_start_main at /lib64/libc.so.6 (unknown line)
+_start at /mnt/apps/aristotle/site/linux-rocky9-x86_64/gcc-14.2.0/julia-1.11.3-cd6ao7vkixnampgzn3iuc5dua26aws7v/bin/julia (unknown line)
+unknown function (ip: (nil))
+Allocations: 4166880 (Pool: 4166681; Big: 199); GC: 6
+srun: error: cn8: task 1: Terminated
+srun: Force Terminated StepId=2620294.0

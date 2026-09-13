@@ -1,0 +1,22 @@
+Precompiling MPI...
+Precompiling MPI...
+    MPIPreferences Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MPIPreferences/rGk9Z_D6FFA.ji.pidfile)
+    MPIPreferences Being precompiled by another process (pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MPIPreferences/rGk9Z_D6FFA.ji.pidfile)
+    Hwloc_jll Being precompiled by another process (pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/Hwloc_jll/tooZ5_D6FFA.ji.pidfile)
+    MicrosoftMPI_jll Being precompiled by another process (pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MicrosoftMPI_jll/seL8u_D6FFA.ji.pidfile)
+    Hwloc_jll Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/Hwloc_jll/tooZ5_D6FFA.ji.pidfile)
+    MicrosoftMPI_jll Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MicrosoftMPI_jll/seL8u_D6FFA.ji.pidfile)
+  10284.5 ms  ✓ MicrosoftMPI_jll
+  10306.2 ms  ✓ Hwloc_jll
+  12206.6 ms  ✓ MPIPreferences
+    MPI Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MPI/nO0XF_D6FFA.ji.pidfile)
+  22249.4 ms  ✓ MPIPreferences
+  20365.8 ms  ✓ Hwloc_jll
+  20348.3 ms  ✓ MicrosoftMPI_jll
+  3 dependencies successfully precompiled in 23 seconds. 37 already precompiled.
+  20092.4 ms  ✓ MPI
+  4 dependencies successfully precompiled in 33 seconds. 36 already precompiled.
+┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
+└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67
+┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
+└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67

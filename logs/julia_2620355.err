@@ -1,0 +1,19 @@
+Precompiling MPI...
+Precompiling MPI...
+    MPIPreferences Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MPIPreferences/rGk9Z_D6FFA.ji.pidfile)
+    Hwloc_jll Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/Hwloc_jll/tooZ5_D6FFA.ji.pidfile)
+    MicrosoftMPI_jll Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MicrosoftMPI_jll/seL8u_D6FFA.ji.pidfile)
+   3904.0 ms  ✓ MicrosoftMPI_jll
+   4016.6 ms  ✓ MPIPreferences
+   3915.4 ms  ✓ Hwloc_jll
+   1724.2 ms  ✓ OpenMPI_jll
+   1750.7 ms  ✓ MPItrampoline_jll
+   2002.7 ms  ✓ MPICH_jll
+  10086.4 ms  ✓ MicrosoftMPI_jll
+  10105.9 ms  ✓ Hwloc_jll
+  11945.2 ms  ✓ MPIPreferences
+    MPI Being precompiled by another machine (hostname: cn11.it.auth.gr, pid: 4803, pidfile: /home/s/stavross/.julia/compiled/v1.11/MPI/nO0XF_D6FFA.ji.pidfile)
+   7104.2 ms  ✓ MPI
+  7 dependencies successfully precompiled in 14 seconds. 33 already precompiled.
+  10115.7 ms  ✓ MPI
+  4 dependencies successfully precompiled in 23 seconds. 36 already precompiled.
