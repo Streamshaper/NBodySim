@@ -5,26 +5,24 @@ using AbstractTrees, AdaptiveHierarchicalRegularBinning, BenchmarkTools, Random,
 using Printf
 using MPI
 
-"""
-    rand_particles(num_particles::Int64)
+const G = 6.67430e-11
 
-Generate `num_particles` random particles using a distribution similar to a disk-shaped galaxy.
-"""
 function rand_particles(num_particles::Int64)
     pos  = zeros(3, num_particles)
     vel  = zeros(3, num_particles)
     mass = zeros(num_particles)
 
-    total_mass = 1.0
+    # Realistic kilometer-scale compact system: ~10^15 kg spread across ~10^5 m.
+    total_mass = 1.0e15
     p_mass = total_mass / num_particles
 
     for i = 1:num_particles
         θ = 2π * rand()
-        R = 0.1 + 0.4 * rand()
-        z = (rand() - 0.5) * 0.02
+        R = 2.0e4 + 6.0e4 * rand()
+        z = (rand() - 0.5) * 2.0e3
 
         # Keplerian orbital velocity v = √(G * M / R)
-        v = √(total_mass / R)
+        v = √(G * total_mass / R)
 
         pos[:, i] .= [R * cos(θ), R * sin(θ), z]
         # Counter-clockwise velocity
@@ -37,18 +35,11 @@ end
 getmass(node::SpatialTree) = getcontext(node)[:mass]
 getcom(node::SpatialTree)  = getcontext(node)[:com]
 
-"""
-    grav_acc(mass, r; ϵ = 0.02)
-"""
-function grav_acc(mass::Float64, r::Vector{Float64}; ϵ::Float64 = 0.02)
-    G::Float64 = 1.0 # Standardized unit scale
+function grav_acc(mass::Float64, r::Vector{Float64}; ϵ::Float64 = 100.0)
     d2 = sum(r.^2) + ϵ^2
     return ((G * mass) / (d2^(1.5))) .* r
 end
 
-"""
-    net_acc(pos, vel, mass, node, tree, θ, all_masses)
-"""
 function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node::SpatialTree, tree::SpatialTree, θ::Float64, all_masses::Vector{Float64})
     s = sidelength(node)
     r = getcom(node) .- pos
@@ -144,50 +135,11 @@ function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
 end
 
 # ---------------------------------------------------------
-# WARM-UP COMPILATION SPINNER
-# ---------------------------------------------------------
-function compile_with_spinner(func::Function, message::String)
-    # ... (Keep your existing compile_with_spinner function exactly as is) ...
-    done = Threads.Atomic{Bool}(false)
-    spin_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-    
-    spinner_task = Threads.@spawn begin
-        i = 1
-        while !done[]
-            print("\r\033[K$message ", spin_chars[i])
-            sleep(0.1)
-            i = (i % length(spin_chars)) + 1
-        end
-        print("\r\033[K$message Done! ✨\n")
-    end
-    
-    func() 
-    done[] = true 
-    wait(spinner_task)
-end
-
-warmup = () -> begin
-    warm_pos, warm_vel, warm_mass = rand(3, 2), rand(3, 2), [0.5, 0.5]
-    warm_tree = ahrb(warm_pos, 2, 1; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
-    
-    # FIX: Initialize the context before running the simulation step!
-    update_mass_com!(warm_tree, warm_mass)
-    
-    simulation_step!(warm_pos, warm_vel, warm_mass, warm_tree, 0.0005, 0.5)
-end
-
-if MPI_RANK == 0
-    compile_with_spinner(warmup, "Compiling physics functions...")
-else
-    warmup()
-end
-
-# ---------------------------------------------------------
 # MAIN SIMULATION
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
-num_particles = 1000
-num_steps = 200
+num_particles = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 25000
+num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 120
 
 pos, vel, masses = MPI_RANK == 0 ? rand_particles(num_particles) :
                                   (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles))
@@ -200,7 +152,7 @@ if MPI_RANK == 0
 end
 
 if MPI_RANK == 0
-    println("Starting Galaxy Simulation with $MPI_SIZE MPI ranks...")
+    println("MPI ranks=$(MPI_SIZE) | threads=$(Threads.nthreads()) | particles=$num_particles | steps=$num_steps")
     flush(stdout)
 end
 
@@ -211,7 +163,7 @@ simulation_time = @elapsed begin
         tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
 
         update_mass_com!(tree, masses)
-        simulation_step_mpi!(pos, vel, masses, tree, 0.0005, 0.5, MPI_COMM, MPI_RANK, MPI_SIZE)
+        simulation_step_mpi!(pos, vel, masses, tree, 1.0, 0.5, MPI_COMM, MPI_RANK, MPI_SIZE)
         if MPI_RANK == 0
             push!(frames, copy(pos))
         end
@@ -252,18 +204,18 @@ max_r = max(maximum(abs, frames[end]) * 1.1, 0.5)
 
 # Viewing angles (azimuth, elevation) converted to radians for Makie
 angles = [
-    (deg2rad(30.0), deg2rad(30.0))  (deg2rad(10.0), deg2rad(80.0));
-    (deg2rad(80.0), deg2rad(10.0))  (deg2rad(60.0), deg2rad(30.0))
+    (deg2rad(0.0), deg2rad(90.0)),
+    (deg2rad(60.0), deg2rad(30.0))
 ]
 
-# Create the 2x2 grid of 3D axes
-axs = [Axis3(fig[row, col], 
-             azimuth = angles[row, col][1], 
-             elevation = angles[row, col][2],
+# Create the 1x2 side-by-side grid of 3D axes
+axs = [Axis3(fig[1, col], 
+             azimuth = angles[col][1], 
+             elevation = angles[col][2],
              limits = (-max_r, max_r, -max_r, max_r, -max_r, max_r),
              aspect = :data,
              perspectiveness = 0.5)
-       for row in 1:2, col in 1:2]
+       for col in 1:2]
 
 for ax in axs
     hidedecorations!(ax)
@@ -275,7 +227,7 @@ x_obs = Observable(frames[1][1, :])
 y_obs = Observable(frames[1][2, :])
 z_obs = Observable(frames[1][3, :])
 
-# Draw the initial scatter plot into all 4 axes
+# Draw the initial scatter plot into both axes
 for ax in axs
     scatter!(ax, x_obs, y_obs, z_obs, color = (:black, 0.4), markersize = 3)
 end
@@ -287,7 +239,7 @@ println("Starting video encoding to $out_file ...")
 flush(stdout)
 
 video_encoding_time = @elapsed begin
-    record(fig, out_file, 1:total_frames; framerate = 20) do i
+    record(fig, out_file, 1:total_frames; framerate = 1) do i
         x_obs[] = frames[i][1, :]
         y_obs[] = frames[i][2, :]
         z_obs[] = frames[i][3, :]
@@ -312,11 +264,11 @@ node_count = parse(Int, get(ENV, "SLURM_JOB_NUM_NODES", "1"))
 
 open(stopwatch_file, "a+") do io
     if filesize(stopwatch_file) == 0
-        println(io, "type,node_count,core_count,simulation_time,encoding_time")
+        println(io, "type,node_count,core_count,particle_count,steps,simulation_time,encoding_time")
     end
     simulation_time_string = @sprintf("%.2f", simulation_time)
     encoding_time_string = @sprintf("%.2f", video_encoding_time)
-    println(io, "B_H,$node_count,$core_count,$simulation_time_string,$encoding_time_string")
+    println(io, "B_H,$node_count,$core_count,$num_particles,$num_steps,$simulation_time_string,$encoding_time_string")
 end
 end
 
