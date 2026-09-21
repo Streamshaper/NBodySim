@@ -1,0 +1,10 @@
+[simulation]
+gravitational_constant = 6.67430e-11
+smoothing = 100.0
+particle_radius = 0.0
+opening_angle = 0.5
+timestep = 1.0
+steps = 120
+
+[particles]
+state_file = "fixed_state.bin"

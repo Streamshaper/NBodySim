@@ -142,7 +142,7 @@ end
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
 profile_path = length(ARGS) >= 1 ? ARGS[1] : "profiles/default.toml"
-profile_file = isabspath(profile_path) ? profile_path : joinpath(@__DIR__, profile_path)
+profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
 profile = load_profile(profile_file)
 num_particles = size(profile.positions, 2)
 num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : profile.num_steps

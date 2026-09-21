@@ -1,0 +1,20 @@
+[simulation]
+gravitational_constant = 6.67430e-11
+smoothing = 50.0
+particle_radius = 0.0
+opening_angle = 0.5
+timestep = 1.0
+steps = 120
+
+[particles]
+count = 25000
+seed = 1
+total_mass = 1.0e15
+radius_min = 2.0e5
+radius_max = 8.0e5
+z_half_width = 1.0e3
+
+# For a fixed state, replace the generator settings with:
+# positions = [[x1, y1, z1], [x2, y2, z2]]
+# velocities = [[vx1, vy1, vz1], [vx2, vy2, vz2]]
+# masses = [m1, m2]
