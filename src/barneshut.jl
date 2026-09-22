@@ -208,7 +208,7 @@ out_dir = "output"
 mkpath(out_dir)
 
 # Define the full path using string interpolation
-video_filename = "bh-animation_$(num_particles)p_$(num_steps)s.mp4"
+video_filename = "barneshut-animation_$(num_particles)p_$(num_steps)s.mp4"
 out_file = joinpath(out_dir, video_filename)
 
 println("Setting up CairoMakie animation...")
@@ -216,8 +216,10 @@ flush(stdout)
 
 fig = Figure(size = (1000, 800), backgroundcolor = :black)
 
-# Calculate fixed axis limits based on the final cloud size
-max_r = max(maximum(abs, frames[end]) * 1.1, 0.5)
+all(isfinite, frames) || error("Cannot encode video: simulation produced non-finite particle positions")
+plot_scale = maximum(maximum(abs, frame) for frame in frames)
+isfinite(plot_scale) && plot_scale > 0 || error("Cannot encode video: particle positions exceed finite plotting limits")
+max_r = 1.1
 
 # Viewing angles (azimuth, elevation) converted to radians for Makie
 angles = [
@@ -241,9 +243,9 @@ for ax in axs
 end
 
 # Create Observables (Reactive Variables)
-x_obs = Observable(frames[1][1, :])
-y_obs = Observable(frames[1][2, :])
-z_obs = Observable(frames[1][3, :])
+x_obs = Observable(frames[1][1, :] ./ plot_scale)
+y_obs = Observable(frames[1][2, :] ./ plot_scale)
+z_obs = Observable(frames[1][3, :] ./ plot_scale)
 mass_scale = cbrt.(masses ./ maximum(masses))
 marker_sizes = 1.5 .+ 10.5 .* mass_scale
 
@@ -260,9 +262,9 @@ flush(stdout)
 
 video_encoding_time = @elapsed begin
     record(fig, out_file, 1:total_frames; framerate = 1) do i
-        x_obs[] = frames[i][1, :]
-        y_obs[] = frames[i][2, :]
-        z_obs[] = frames[i][3, :]
+        x_obs[] = frames[i][1, :] ./ plot_scale
+        y_obs[] = frames[i][2, :] ./ plot_scale
+        z_obs[] = frames[i][3, :] ./ plot_scale
         
         # Print encoding progress and force write to SLURM logs
         if i % vid_log_interval == 0

@@ -108,7 +108,7 @@ function load_profile(path::AbstractString)
     opening_angle > 0 || error("Profile opening_angle must be positive")
     timestep > 0 || error("Profile timestep must be positive")
     num_steps >= 0 || error("Profile steps must be non-negative")
-    verification_energy_max_particles > 0 || error("Profile verification_energy_max_particles must be positive")
+    verification_energy_max_particles >= 0 || error("Profile verification_energy_max_particles must be non-negative")
 
     if haskey(particles, "state_file")
         state_path = String(particles["state_file"])
