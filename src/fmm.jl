@@ -236,7 +236,8 @@ flush(stdout)
 
 fig = Figure(size = (1000, 800), backgroundcolor = :black)
 
-all(isfinite, frames) || error("Cannot encode video: simulation produced non-finite particle positions")
+all(frame -> all(isfinite, frame), frames) ||
+    error("Cannot encode video: simulation produced non-finite particle positions")
 plot_scale = maximum(maximum(abs, frame) for frame in frames)
 isfinite(plot_scale) && plot_scale > 0 || error("Cannot encode video: particle positions exceed finite plotting limits")
 max_r = 1.1
