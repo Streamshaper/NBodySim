@@ -5,6 +5,7 @@ using MPI
 using FastMultipole
 using FastMultipole.StaticArrays: SVector, SMatrix
 include(joinpath(@__DIR__, "profile.jl"))
+include(joinpath(@__DIR__, "verification.jl"))
 
 struct FMMBody{T}
     position::SVector{3,T}
@@ -146,6 +147,15 @@ profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR_
 profile = load_profile(profile_file)
 num_particles = size(profile.positions, 2)
 num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : profile.num_steps
+verification_baseline = profile.verification_enabled ?
+    verification_reference(profile.positions, profile.velocities, profile.masses,
+                           profile.gravitational_constant, profile.smoothing,
+                           profile.verification_energy_max_particles) : nothing
+verification_rows = MPI_RANK == 0 && profile.verification_enabled ?
+    [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
+                                    profile.masses, profile.gravitational_constant,
+                                    profile.smoothing, verification_baseline,
+                                    profile.verification_energy_max_particles))] : nothing
 
 pos, vel, masses = MPI_RANK == 0 ? (copy(profile.positions), copy(profile.velocities), copy(profile.masses)) :
                                   (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles))
@@ -153,7 +163,7 @@ MPI.Bcast!(pos, 0, MPI_COMM)
 MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
-if MPI_RANK == 0
+if MPI_RANK == 0 && profile.video_encoding_enabled
     push!(frames, copy(pos)) # Push initial state (t=0)
 end
 
@@ -167,8 +177,17 @@ log_interval = max(1, num_steps ÷ 10) # Log every 10%
 simulation_time = @elapsed begin
     for step in 1:num_steps
         simulation_step_mpi!(pos, vel, masses, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
-        if MPI_RANK == 0
+        if MPI_RANK == 0 && profile.video_encoding_enabled
             push!(frames, copy(pos))
+        end
+        if MPI_RANK == 0 && profile.verification_enabled
+            if step % log_interval == 0 || step == num_steps
+                push!(verification_rows, (step, step * profile.timestep,
+                                          verification_metrics(pos, vel, masses,
+                                                               profile.gravitational_constant,
+                                                               profile.smoothing, verification_baseline,
+                                                               profile.verification_energy_max_particles)))
+            end
         end
 
         # Print progress and force write to logs
@@ -182,10 +201,26 @@ end
 
 if MPI_RANK == 0
     println("Total simulation time: $simulation_time seconds")
+    if profile.verification_enabled
+        verification_file = joinpath("logs", "verification_fmm_$(num_particles)p_$(num_steps)s.csv")
+        mkpath(dirname(verification_file))
+        open(verification_file, "w") do io
+            write_verification_header(io)
+            for (step, time, metrics) in verification_rows
+                write_verification_row(io, step, time, metrics)
+            end
+        end
+        final_metrics = verification_rows[end][3]
+        println("Verification: COM drift=$(final_metrics.center_of_mass_drift), " *
+                "momentum drift=$(final_metrics.relative_momentum_change), " *
+                "angular momentum drift=$(final_metrics.relative_angular_momentum_change), " *
+                "relative energy change=$(final_metrics.relative_energy_change)")
+        println("Verification metrics saved to $verification_file")
+    end
     flush(stdout)
 end
 
-if MPI_RANK == 0
+if MPI_RANK == 0 && profile.video_encoding_enabled
 
 # ---------------------------------------------------------
 # CAIROMAKIE VIDEO EXPORT
@@ -229,10 +264,12 @@ end
 x_obs = Observable(frames[1][1, :])
 y_obs = Observable(frames[1][2, :])
 z_obs = Observable(frames[1][3, :])
+mass_scale = cbrt.(masses ./ maximum(masses))
+marker_sizes = 1.5 .+ 10.5 .* mass_scale
 
 # Draw the initial scatter plot into both axes
 for ax in axs
-    scatter!(ax, x_obs, y_obs, z_obs, color = (:white, 0.9), markersize = 3)
+    scatter!(ax, x_obs, y_obs, z_obs, color = (:white, 0.5), markersize = marker_sizes)
 end
 
 total_frames = length(frames)

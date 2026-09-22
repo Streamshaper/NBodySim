@@ -5,6 +5,10 @@ particle_radius = 0.0
 opening_angle = 0.5
 timestep = 1.0
 steps = 120
+verification_enabled = true
+# Exact O(N^2) energy verification is enabled up to this particle count.
+verification_energy_max_particles = 2000
+video_encoding_enabled = true
 
 [particles]
 count = 25000

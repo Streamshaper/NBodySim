@@ -10,7 +10,6 @@ julia --project=. src/barneshut.jl profiles/default.toml 50
 The optional second argument overrides the number of steps. A profile contains
 the physical parameters and either a reproducible disk generator or an exact
 particle state:
-
 ```toml
 [simulation]
 gravitational_constant = 6.67430e-11
@@ -39,6 +38,19 @@ velocities = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 masses = [1.0, 1.0]
 ```
 
+Each solver writes checkpoint verification metrics to `logs/verification_*.csv` and
+prints the final values. The metrics include center-of-mass drift, relative linear
+momentum change, relative angular-momentum change, and relative total-energy change.
+Set `simulation.verification_enabled = false` to disable all verification work and
+CSV output while retaining the energy limit for enabled runs.
+The energy uses the same Plummer-softened potential as the force calculation and is
+computed exactly only when the particle count is at most
+`simulation.verification_energy_max_particles` (default `2000`); otherwise the energy
+columns are `NaN` while the O(N) conservation checks remain active.
+
+Set `simulation.video_encoding_enabled = false` to skip frame retention and CairoMakie
+video encoding entirely.
+
 For hundreds of thousands of particles, store the state in the compact binary
 format used by `profiles/fixed_state.toml`:
 
@@ -62,3 +74,8 @@ large TOML tables and keeps the exact initial state reproducible.
 Plummer softening length in Barnes-Hut and FMM calculations. `particle_radius`
 is the physical radius supplied to FMM for its particle geometry; it is
 independent of the force softening length.
+
+`profiles/planetary.toml` contains a hardcoded 11-body system: one solar-mass
+central body and ten smaller orbiting bodies. Its positions use metres, velocities
+use metres per second, masses use kilograms, and its timestep is one day. Video
+encoding is enabled by default for this profile.
