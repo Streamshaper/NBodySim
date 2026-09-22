@@ -15,7 +15,7 @@ module load julia/1.11.3
 
 # Use all allocated CPUs through MPI plus Julia threads
 export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
-PROFILE=${PROFILE:-profiles/default.toml}
+PROFILE=${PROFILE:-profiles/planetary.toml}
 
 # Launch one Julia process per allocated MPI task and connect all tasks to one MPI world.
 	srun --mpi=pmi2 --ntasks="$SLURM_NTASKS" --ntasks-per-node=1 \

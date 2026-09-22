@@ -34,7 +34,9 @@ function FastMultipole.source_system_to_buffer!(buffer, i_buffer, system::Gravit
     buffer[2, i_buffer] = y
     buffer[3, i_buffer] = z
     buffer[4, i_buffer] = system.bodies[i_body].radius
-    buffer[5, i_buffer] = system.bodies[i_body].strength
+    # FastMultipole's Laplace kernel is normalized by 1 / (4*pi). Scale the
+    # source strength so its gradient has physical gravitational units.
+    buffer[5, i_buffer] = 4π * system.gravitational_constant * system.bodies[i_body].strength
 end
 
 FastMultipole.data_per_body(::GravitationalSystem) = 5
@@ -61,7 +63,7 @@ function FastMultipole.direct!(target_buffer, target_index,
             if r2 > 0
                 r = sqrt(r2)
                 softened_r2 = r2 + source_system.smoothing^2
-                gradient -= source_system.gravitational_constant * SVector{3}(dx, dy, dz) * source_strength /
+                gradient -= SVector{3}(dx, dy, dz) * source_strength /
                             (4π * softened_r2 * sqrt(softened_r2))
             end
         end
@@ -86,9 +88,8 @@ function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Ve
     
     accs = @view system.potential[5:7, :]
     
-    # Physics fix: the acceleration is subtracted we subtract 
-    # to ensure gravity remains attractive rather than repulsive.
-    vel .-= accs .* Δt
+    # FastMultipole returns the inward gravitational gradient for positive masses.
+    vel .+= accs .* Δt
     pos .+= vel .* Δt
 end
 
@@ -117,7 +118,7 @@ function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
 
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
-        local_vel[:, global_index] .= vel[:, global_index] .- accs[:, local_index] .* profile.timestep
+        local_vel[:, global_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
         local_pos[:, global_index] .= pos[:, global_index] .+ local_vel[:, global_index] .* profile.timestep
     end
 
