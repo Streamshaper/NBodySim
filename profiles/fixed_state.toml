@@ -8,6 +8,7 @@ steps = 120
 verification_enabled = true
 verification_energy_max_particles = 2000
 video_encoding_enabled = true
+fps = 1.0
 
 [particles]
 state_file = "fixed_state.bin"

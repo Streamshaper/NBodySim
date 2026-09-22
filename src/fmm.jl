@@ -283,7 +283,7 @@ println("Starting video encoding to $out_file ...")
 flush(stdout)
 
 video_encoding_time = @elapsed begin
-    record(fig, out_file, 1:total_frames; framerate = 1) do i
+    record(fig, out_file, 1:total_frames; framerate = profile.fps) do i
         x_obs[] = frames[i][1, :] ./ plot_scale
         y_obs[] = frames[i][2, :] ./ plot_scale
         z_obs[] = frames[i][3, :] ./ plot_scale

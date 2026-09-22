@@ -13,6 +13,7 @@ struct SimulationProfile
     verification_enabled::Bool
     verification_energy_max_particles::Int
     video_encoding_enabled::Bool
+    fps::Float64
     positions::Matrix{Float64}
     velocities::Matrix{Float64}
     masses::Vector{Float64}
@@ -101,6 +102,7 @@ function load_profile(path::AbstractString)
     verification_enabled = Bool(get(simulation, "verification_enabled", true))
     verification_energy_max_particles = Int(get(simulation, "verification_energy_max_particles", 2000))
     video_encoding_enabled = Bool(get(simulation, "video_encoding_enabled", true))
+    fps = Float64(get(simulation, "fps", 1.0))
 
     gravitational_constant > 0 || error("Profile gravitational_constant must be positive")
     smoothing >= 0 || error("Profile smoothing must be non-negative")
@@ -109,6 +111,7 @@ function load_profile(path::AbstractString)
     timestep > 0 || error("Profile timestep must be positive")
     num_steps >= 0 || error("Profile steps must be non-negative")
     verification_energy_max_particles >= 0 || error("Profile verification_energy_max_particles must be non-negative")
+    fps > 0 || error("Profile fps must be positive")
 
     if haskey(particles, "state_file")
         state_path = String(particles["state_file"])
@@ -127,6 +130,6 @@ function load_profile(path::AbstractString)
     all(masses .> 0) || error("Profile masses must be positive")
     return SimulationProfile(gravitational_constant, smoothing, particle_radius, opening_angle,
                              timestep, num_steps, verification_enabled,
-                             verification_energy_max_particles, video_encoding_enabled,
+                             verification_energy_max_particles, video_encoding_enabled, fps,
                              positions, velocities, masses)
 end

@@ -50,6 +50,7 @@ columns are `NaN` while the O(N) conservation checks remain active.
 
 Set `simulation.video_encoding_enabled = false` to skip frame retention and CairoMakie
 video encoding entirely.
+Set `simulation.fps` to control the encoded video's frame rate; it defaults to `1.0`.
 
 For hundreds of thousands of particles, store the state in the compact binary
 format used by `profiles/fixed_state.toml`:
