@@ -39,17 +39,6 @@ function FastMultipole.source_system_to_buffer!(buffer, i_buffer, system::Gravit
     buffer[5, i_buffer] = 4π * system.interaction_strength * system.bodies[i_body].strength
 end
 
-function update_body_positions!(system::GravitationalSystem{Float64}, positions, indices)
-    @inbounds for (body_index, position_index) in enumerate(indices)
-        old_body = system.bodies[body_index]
-        system.bodies[body_index] = FMMBody(
-            SVector{3,Float64}(positions[1, position_index], positions[2, position_index], positions[3, position_index]),
-            old_body.radius,
-            old_body.strength
-        )
-    end
-end
-
 FastMultipole.data_per_body(::GravitationalSystem) = 5
 FastMultipole.get_position(system::GravitationalSystem, i) = system.bodies[i].position
 FastMultipole.strength_dims(::GravitationalSystem) = 1
@@ -113,18 +102,19 @@ function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
     return first_particle:last_particle
 end
 
-function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
-                             profile::SimulationProfile, comm, local_range,
-                             source_system::GravitationalSystem{Float64},
-                             target_system::GravitationalSystem{Float64},
-                             local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
-                             pos_recvbuf, vel_recvbuf)
-    fill!(local_pos, 0.0)
-    fill!(local_vel, 0.0)
-    update_body_positions!(source_system, pos, axes(pos, 2))
-    update_body_positions!(target_system, pos, local_range)
-
-	fmm!(target_system, source_system; gradient = true,
+function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
+                             profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
+    local_pos = zeros(size(pos))
+    local_vel = zeros(size(vel))
+    local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
+    source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
+                                        smoothing = profile.smoothing,
+                                        interaction_strength = profile.interaction_strength)
+    target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
+                                        particle_radius = profile.particle_radius,
+                                        smoothing = profile.smoothing,
+                                        interaction_strength = profile.interaction_strength)
+    fmm!(target_system, source_system; gradient = true,
             expansion_order = profile.fmm.expansion_order,
             multipole_acceptance = profile.fmm.multipole_acceptance,
             silence_warnings = true)
@@ -133,12 +123,12 @@ function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
 
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
-        local_vel[:, local_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
-        local_pos[:, local_index] .= pos[:, global_index] .+ local_vel[:, local_index] .* profile.timestep
+        local_vel[:, global_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
+        local_pos[:, global_index] .= pos[:, global_index] .+ local_vel[:, global_index] .* profile.timestep
     end
 
-    MPI.Allgatherv!(local_pos, pos_recvbuf, comm)
-    MPI.Allgatherv!(local_vel, vel_recvbuf, comm)
+    MPI.Allreduce!(local_pos, pos, +, comm)
+    MPI.Allreduce!(local_vel, vel, +, comm)
 end
 
 MPI.Init()
@@ -179,21 +169,6 @@ MPI.Bcast!(pos, 0, MPI_COMM)
 MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
-local_range = mpi_local_range(num_particles, MPI_RANK, MPI_SIZE)
-particle_counts = [length(mpi_local_range(num_particles, rank, MPI_SIZE)) for rank in 0:(MPI_SIZE - 1)]
-recvcounts = 3 .* particle_counts
-displacements = 3 .* cumsum(vcat(0, particle_counts[1:end-1]))
-pos_recvbuf = MPI.VBuffer(pos, recvcounts, displacements)
-vel_recvbuf = MPI.VBuffer(vel, recvcounts, displacements)
-source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
-                                    smoothing = profile.smoothing,
-                                    interaction_strength = profile.interaction_strength)
-target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
-                                    particle_radius = profile.particle_radius,
-                                    smoothing = profile.smoothing,
-                                    interaction_strength = profile.interaction_strength)
-local_pos = zeros(3, length(local_range))
-local_vel = zeros(3, length(local_range))
 
 if MPI_RANK == 0 && profile.video_encoding_enabled
     push!(frames, copy(pos)) # Push initial state (t=0)
@@ -208,9 +183,7 @@ log_interval = max(1, num_steps ÷ 10) # Log every 10%
 
 simulation_time = @elapsed begin
     for step in 1:num_steps
-        simulation_step_mpi!(pos, vel, profile, MPI_COMM, local_range,
-                     source_system, target_system, local_pos, local_vel,
-                     pos_recvbuf, vel_recvbuf)
+        simulation_step_mpi!(pos, vel, masses, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
         if MPI_RANK == 0 && profile.video_encoding_enabled
             push!(frames, copy(pos))
         end

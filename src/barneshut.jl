@@ -68,23 +68,21 @@ function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
 end
 
 function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                             tree::SpatialTree, profile::SimulationProfile, comm, local_range,
-                             local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
-                             pos_recvbuf, vel_recvbuf)
-    fill!(local_pos, 0.0)
-    fill!(local_vel, 0.0)
+                             tree::SpatialTree, profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
+    local_pos = zeros(size(pos))
+    local_vel = zeros(size(vel))
+    local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
 
-    Threads.@threads for local_index in eachindex(local_range)
-        global_index = local_range[local_index]
-        acc = net_acc(pos[:, global_index], vel[:, global_index], masses[global_index], tree, tree,
+    Threads.@threads for i in local_range
+        acc = net_acc(pos[:, i], vel[:, i], masses[i], tree, tree,
                   profile.barnes_hut_opening_angle, masses,
                   profile.interaction_strength, profile.smoothing)
-        local_vel[:, local_index] .= vel[:, global_index] .+ acc .* profile.timestep
-        local_pos[:, local_index] .= pos[:, global_index] .+ local_vel[:, local_index] .* profile.timestep
+        local_vel[:, i] .= vel[:, i] .+ acc .* profile.timestep
+        local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* profile.timestep
     end
 
-    MPI.Allgatherv!(local_pos, pos_recvbuf, comm)
-    MPI.Allgatherv!(local_vel, vel_recvbuf, comm)
+    MPI.Allreduce!(local_pos, pos, +, comm)
+    MPI.Allreduce!(local_vel, vel, +, comm)
 end
 
 MPI.Init()
@@ -96,27 +94,23 @@ const MPI_SIZE = MPI.Comm_size(MPI_COMM)
 # TREE INITIALIZATION HELPER
 # ---------------------------------------------------------
 function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
-    nodes = collect(PostOrderDFS(tree))
-    leaves = filter(isleaf, nodes)
-
-    Threads.@threads for leaf in leaves
-        p_idx = tree.info.perm[range(leaf)]
-        m_sum = sum(@view masses[p_idx])
-        pts   = points(leaf)
-        c_m   = m_sum > 0 ? (pts * masses[p_idx]) ./ m_sum : zeros(3)
-        setcontext!(leaf, (; com = c_m, mass = m_sum))
-    end
-
-    for node in nodes
-        isleaf(node) && continue
-        c_m   = zeros(3)
-        m_sum = 0.0
-        for child in children(node)
-            c_m   .+= getcontext(child)[:com] .* getcontext(child)[:mass]
-            m_sum  += getcontext(child)[:mass]
+    foreach(PostOrderDFS(tree)) do node
+        if isleaf(node)
+            p_idx = tree.info.perm[range(node)]
+            m_sum = sum(@view masses[p_idx])
+            pts   = points(node)
+            c_m   = m_sum > 0 ? (pts * masses[p_idx]) ./ m_sum : zeros(3)
+            setcontext!(node, (; com = c_m, mass = m_sum))
+        else
+            c_m   = zeros(3)
+            m_sum = 0.0
+            for child in children(node)
+                c_m   .+= getcontext(child)[:com] .* getcontext(child)[:mass]
+                m_sum  += getcontext(child)[:mass]
+            end
+            c_m ./= (m_sum > 0 ? m_sum : 1.0)
+            setcontext!(node, (; com = c_m, mass = m_sum))
         end
-        c_m ./= (m_sum > 0 ? m_sum : 1.0)
-        setcontext!(node, (; com = c_m, mass = m_sum))
     end
 end
 
@@ -145,15 +139,6 @@ MPI.Bcast!(pos, 0, MPI_COMM)
 MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
-local_range = mpi_local_range(num_particles, MPI_RANK, MPI_SIZE)
-particle_counts = [length(mpi_local_range(num_particles, rank, MPI_SIZE)) for rank in 0:(MPI_SIZE - 1)]
-recvcounts = 3 .* particle_counts
-displacements = 3 .* cumsum(vcat(0, particle_counts[1:end-1]))
-pos_recvbuf = MPI.VBuffer(pos, recvcounts, displacements)
-vel_recvbuf = MPI.VBuffer(vel, recvcounts, displacements)
-local_pos = zeros(3, length(local_range))
-local_vel = zeros(3, length(local_range))
-
 if MPI_RANK == 0 && profile.video_encoding_enabled
     push!(frames, copy(pos)) # Push initial state (t=0)
 end
@@ -170,8 +155,7 @@ simulation_time = @elapsed begin
         tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
 
         update_mass_com!(tree, masses)
-        simulation_step_mpi!(pos, vel, masses, tree, profile, MPI_COMM, local_range,
-                     local_pos, local_vel, pos_recvbuf, vel_recvbuf)
+        simulation_step_mpi!(pos, vel, masses, tree, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
         if MPI_RANK == 0 && profile.video_encoding_enabled
             push!(frames, copy(pos))
         end
