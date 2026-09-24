@@ -39,6 +39,13 @@ function FastMultipole.source_system_to_buffer!(buffer, i_buffer, system::Gravit
     buffer[5, i_buffer] = 4π * system.gravitational_constant * system.bodies[i_body].strength
 end
 
+function update_body_positions!(system::GravitationalSystem{Float64}, positions, indices)
+    @inbounds for (body_index, position_index) in enumerate(indices)
+        system.bodies[body_index].position = SVector{3,Float64}(
+            positions[1, position_index], positions[2, position_index], positions[3, position_index])
+    end
+end
+
 FastMultipole.data_per_body(::GravitationalSystem) = 5
 FastMultipole.get_position(system::GravitationalSystem, i) = system.bodies[i].position
 FastMultipole.strength_dims(::GravitationalSystem) = 1
@@ -61,7 +68,6 @@ function FastMultipole.direct!(target_buffer, target_index,
             dx, dy, dz = target_x - source_x, target_y - source_y, target_z - source_z
             r2 = dx * dx + dy * dy + dz * dz
             if r2 > 0
-                r = sqrt(r2)
                 softened_r2 = r2 + source_system.smoothing^2
                 gradient -= SVector{3}(dx, dy, dz) * source_strength /
                             (4π * softened_r2 * sqrt(softened_r2))
@@ -100,30 +106,28 @@ function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
     return first_particle:last_particle
 end
 
-function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                             profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
-    local_pos = zeros(size(pos))
-    local_vel = zeros(size(vel))
-    local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
-    source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
-                                        smoothing = profile.smoothing,
-                                        gravitational_constant = profile.gravitational_constant)
-    target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
-                                        particle_radius = profile.particle_radius,
-                                        smoothing = profile.smoothing,
-                                        gravitational_constant = profile.gravitational_constant)
+function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
+                             profile::SimulationProfile, comm, local_range,
+                             source_system::GravitationalSystem{Float64},
+                             target_system::GravitationalSystem{Float64},
+                             local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
+                             pos_recvbuf, vel_recvbuf)
+    fill!(local_pos, 0.0)
+    fill!(local_vel, 0.0)
+    update_body_positions!(source_system, pos, axes(pos, 2))
+    update_body_positions!(target_system, pos, local_range)
     fmm!(target_system, source_system; gradient = true, silence_warnings = true)
 
     accs = @view target_system.potential[5:7, :]
 
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
-        local_vel[:, global_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
-        local_pos[:, global_index] .= pos[:, global_index] .+ local_vel[:, global_index] .* profile.timestep
+        local_vel[:, local_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
+        local_pos[:, local_index] .= pos[:, global_index] .+ local_vel[:, local_index] .* profile.timestep
     end
 
-    MPI.Allreduce!(local_pos, pos, +, comm)
-    MPI.Allreduce!(local_vel, vel, +, comm)
+    MPI.Allgatherv!(local_pos, pos_recvbuf, comm)
+    MPI.Allgatherv!(local_vel, vel_recvbuf, comm)
 end
 
 MPI.Init()
@@ -164,6 +168,22 @@ MPI.Bcast!(pos, 0, MPI_COMM)
 MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
+local_range = mpi_local_range(num_particles, MPI_RANK, MPI_SIZE)
+particle_counts = [length(mpi_local_range(num_particles, rank, MPI_SIZE)) for rank in 0:(MPI_SIZE - 1)]
+recvcounts = 3 .* particle_counts
+displacements = 3 .* cumsum(vcat(0, particle_counts[1:end-1]))
+pos_recvbuf = MPI.VBuffer(pos, recvcounts, displacements)
+vel_recvbuf = MPI.VBuffer(vel, recvcounts, displacements)
+source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
+                                    smoothing = profile.smoothing,
+                                    gravitational_constant = profile.gravitational_constant)
+target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
+                                    particle_radius = profile.particle_radius,
+                                    smoothing = profile.smoothing,
+                                    gravitational_constant = profile.gravitational_constant)
+local_pos = zeros(3, length(local_range))
+local_vel = zeros(3, length(local_range))
+
 if MPI_RANK == 0 && profile.video_encoding_enabled
     push!(frames, copy(pos)) # Push initial state (t=0)
 end
@@ -177,7 +197,9 @@ log_interval = max(1, num_steps ÷ 10) # Log every 10%
 
 simulation_time = @elapsed begin
     for step in 1:num_steps
-        simulation_step_mpi!(pos, vel, masses, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
+        simulation_step_mpi!(pos, vel, profile, MPI_COMM, local_range,
+                     source_system, target_system, local_pos, local_vel,
+                     pos_recvbuf, vel_recvbuf)
         if MPI_RANK == 0 && profile.video_encoding_enabled
             push!(frames, copy(pos))
         end
@@ -235,13 +257,13 @@ out_file = joinpath(out_dir, video_filename)
 println("Setting up CairoMakie animation...")
 flush(stdout)
 
-fig = Figure(size = (1000, 800), backgroundcolor = :black)
+fig = Figure(size = (1400, 1000), backgroundcolor = :black)
 
 all(frame -> all(isfinite, frame), frames) ||
     error("Cannot encode video: simulation produced non-finite particle positions")
 plot_scale = maximum(maximum(abs, frame) for frame in frames)
 isfinite(plot_scale) && plot_scale > 0 || error("Cannot encode video: particle positions exceed finite plotting limits")
-max_r = 1.1
+max_r = 1.05
 
 # Viewing angles (azimuth, elevation) converted to radians for Makie
 angles = [
@@ -269,7 +291,7 @@ x_obs = Observable(frames[1][1, :] ./ plot_scale)
 y_obs = Observable(frames[1][2, :] ./ plot_scale)
 z_obs = Observable(frames[1][3, :] ./ plot_scale)
 mass_scale = cbrt.(masses ./ maximum(masses))
-marker_sizes = 1.5 .+ 10.5 .* mass_scale
+marker_sizes = 1.5 .+ 9.0 .* mass_scale
 
 # Draw the initial scatter plot into both axes
 for ax in axs
