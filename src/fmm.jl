@@ -16,14 +16,14 @@ end
 mutable struct GravitationalSystem{T}
     bodies::Vector{FMMBody{T}}
     potential::Matrix{T}
-    gravitational_constant::T
+    interaction_strength::T
     smoothing::T
 end
 
 function GravitationalSystem(pos::Matrix{T}, masses::Vector{T}; particle_radius::T,
-                             smoothing::T, gravitational_constant::T) where {T <: AbstractFloat}
+                             smoothing::T, interaction_strength::T) where {T <: AbstractFloat}
     bodies = [FMMBody(SVector{3,T}(pos[:, i]), particle_radius, masses[i]) for i in axes(pos, 2)]
-    return GravitationalSystem(bodies, zeros(T, 16, length(bodies)), gravitational_constant, smoothing)
+    return GravitationalSystem(bodies, zeros(T, 16, length(bodies)), interaction_strength, smoothing)
 end
 
 Base.eltype(::GravitationalSystem{T}) where {T} = T
@@ -36,7 +36,7 @@ function FastMultipole.source_system_to_buffer!(buffer, i_buffer, system::Gravit
     buffer[4, i_buffer] = system.bodies[i_body].radius
     # FastMultipole's Laplace kernel is normalized by 1 / (4*pi). Scale the
     # source strength so its gradient has physical gravitational units.
-    buffer[5, i_buffer] = 4π * system.gravitational_constant * system.bodies[i_body].strength
+    buffer[5, i_buffer] = 4π * system.interaction_strength * system.bodies[i_body].strength
 end
 
 function update_body_positions!(system::GravitationalSystem{Float64}, positions, indices)
@@ -87,10 +87,14 @@ end
 function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64}, profile::SimulationProfile)
     system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
                                  smoothing = profile.smoothing,
-                                 gravitational_constant = profile.gravitational_constant)
+                                 interaction_strength = profile.interaction_strength)
     
     # API fix: Silenced the missing 'get_previous_influence' warning natively
-    fmm!(system; gradient = true, silence_warnings = true)
+        fmm!(system; gradient = true,
+            expansion_order = profile.fmm.expansion_order,
+            multipole_acceptance = profile.fmm.multipole_acceptance,
+            leaf_size = profile.fmm.leaf_size,
+            silence_warnings = true)
     
     accs = @view system.potential[5:7, :]
     
@@ -116,7 +120,11 @@ function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
     fill!(local_vel, 0.0)
     update_body_positions!(source_system, pos, axes(pos, 2))
     update_body_positions!(target_system, pos, local_range)
-    fmm!(target_system, source_system; gradient = true, silence_warnings = true)
+        fmm!(target_system, source_system; gradient = true,
+            expansion_order = profile.fmm.expansion_order,
+            multipole_acceptance = profile.fmm.multipole_acceptance,
+            leaf_size = profile.fmm.leaf_size,
+            silence_warnings = true)
 
     accs = @view target_system.potential[5:7, :]
 
@@ -154,11 +162,11 @@ num_particles = size(profile.positions, 2)
 num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : profile.num_steps
 verification_baseline = profile.verification_enabled ?
     verification_reference(profile.positions, profile.velocities, profile.masses,
-                           profile.gravitational_constant, profile.smoothing,
+                           profile.interaction_strength, profile.smoothing,
                            profile.verification_energy_max_particles) : nothing
 verification_rows = MPI_RANK == 0 && profile.verification_enabled ?
     [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
-                                    profile.masses, profile.gravitational_constant,
+                                    profile.masses, profile.interaction_strength,
                                     profile.smoothing, verification_baseline,
                                     profile.verification_energy_max_particles))] : nothing
 
@@ -176,11 +184,11 @@ pos_recvbuf = MPI.VBuffer(pos, recvcounts, displacements)
 vel_recvbuf = MPI.VBuffer(vel, recvcounts, displacements)
 source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
                                     smoothing = profile.smoothing,
-                                    gravitational_constant = profile.gravitational_constant)
+                                    interaction_strength = profile.interaction_strength)
 target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
                                     particle_radius = profile.particle_radius,
                                     smoothing = profile.smoothing,
-                                    gravitational_constant = profile.gravitational_constant)
+                                    interaction_strength = profile.interaction_strength)
 local_pos = zeros(3, length(local_range))
 local_vel = zeros(3, length(local_range))
 
@@ -207,7 +215,7 @@ simulation_time = @elapsed begin
             if step % log_interval == 0 || step == num_steps
                 push!(verification_rows, (step, step * profile.timestep,
                                           verification_metrics(pos, vel, masses,
-                                                               profile.gravitational_constant,
+                                                               profile.interaction_strength,
                                                                profile.smoothing, verification_baseline,
                                                                profile.verification_energy_max_particles)))
             end

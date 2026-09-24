@@ -12,12 +12,19 @@ the physical parameters and either a reproducible disk generator or an exact
 particle state:
 ```toml
 [simulation]
-gravitational_constant = 6.67430e-11
+interaction_strength = 6.67430e-11
 smoothing = 100.0
 particle_radius = 0.0
-opening_angle = 0.5
 timestep = 1.0
 steps = 120
+
+[barnes_hut]
+opening_angle = 0.5
+
+[fmm]
+expansion_order = 5
+multipole_acceptance = 0.4
+leaf_size = 20
 
 [particles]
 count = 1000
@@ -71,7 +78,12 @@ The binary file contains a small format header, the particle count, then the
 contiguous `Float64` position, velocity, and mass arrays. This avoids parsing
 large TOML tables and keeps the exact initial state reproducible.
 
-`opening_angle` is the Barnes-Hut opening parameter. `smoothing` is the
+`barnes_hut.opening_angle` is the Barnes-Hut opening parameter.
+`fmm.expansion_order` is the FMM multipole expansion order,
+`fmm.multipole_acceptance` is the FMM multipole acceptance criterion, and
+`fmm.leaf_size` is the number of particles per FMM leaf. `interaction_strength`
+sets the effective pairwise interaction strength for the selected physical model
+(for Newtonian gravity this is the gravitational constant). `smoothing` is the
 Plummer softening length in Barnes-Hut and FMM calculations. `particle_radius`
 is the physical radius supplied to FMM for its particle geometry; it is
 independent of the force softening length.

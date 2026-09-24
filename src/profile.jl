@@ -3,11 +3,18 @@ using Random
 
 const PARTICLE_STATE_MAGIC = UInt8[0x4e, 0x42, 0x53, 0x31]
 
+struct FMMProfile
+    expansion_order::Int
+    multipole_acceptance::Float64
+    leaf_size::Int
+end
+
 struct SimulationProfile
-    gravitational_constant::Float64
+    interaction_strength::Float64
     smoothing::Float64
     particle_radius::Float64
-    opening_angle::Float64
+    barnes_hut_opening_angle::Float64
+    fmm::FMMProfile
     timestep::Float64
     num_steps::Int
     verification_enabled::Bool
@@ -31,7 +38,7 @@ function _particle_matrix(value, name)
     return permutedims(reduce(vcat, (permutedims(row) for row in rows)))
 end
 
-function _generated_particles(particles, gravitational_constant)
+function _generated_particles(particles, interaction_strength)
     count = Int(_required(particles, "count", "particles"))
     count > 0 || error("Profile particle count must be positive")
     seed = Int(get(particles, "seed", 1))
@@ -49,7 +56,7 @@ function _generated_particles(particles, gravitational_constant)
         radius = radius_min + (radius_max - radius_min) * rand(rng)
         positions[:, index] .= (radius * cos(angle), radius * sin(angle),
                                 (2rand(rng) - 1) * z_half_width)
-        speed = sqrt(gravitational_constant * total_mass / radius)
+        speed = sqrt(interaction_strength * total_mass / radius)
         velocities[:, index] .= (-speed * sin(angle), speed * cos(angle), 0.0)
     end
     return positions, velocities, masses
@@ -92,11 +99,17 @@ end
 function load_profile(path::AbstractString)
     data = TOML.parsefile(path)
     simulation = get(data, "simulation", Dict{String, Any}())
+    barnes_hut = get(data, "barnes_hut", Dict{String, Any}())
+    fmm = get(data, "fmm", Dict{String, Any}())
     particles = get(data, "particles", Dict{String, Any}())
-    gravitational_constant = Float64(get(simulation, "gravitational_constant", 6.67430e-11))
+    interaction_strength = Float64(get(simulation, "interaction_strength",
+                                      get(simulation, "gravitational_constant", 6.67430e-11)))
     smoothing = Float64(get(simulation, "smoothing", 100.0))
     particle_radius = Float64(get(simulation, "particle_radius", 0.0))
-    opening_angle = Float64(get(simulation, "opening_angle", 0.5))
+    opening_angle = Float64(get(barnes_hut, "opening_angle", get(simulation, "opening_angle", 0.5)))
+    expansion_order = Int(get(fmm, "expansion_order", 5))
+    multipole_acceptance = Float64(get(fmm, "multipole_acceptance", 0.4))
+    leaf_size = Int(get(fmm, "leaf_size", 20))
     timestep = Float64(get(simulation, "timestep", 1.0))
     num_steps = Int(get(simulation, "steps", 120))
     verification_enabled = Bool(get(simulation, "verification_enabled", true))
@@ -104,10 +117,13 @@ function load_profile(path::AbstractString)
     video_encoding_enabled = Bool(get(simulation, "video_encoding_enabled", true))
     fps = Float64(get(simulation, "fps", 1.0))
 
-    gravitational_constant > 0 || error("Profile gravitational_constant must be positive")
+    interaction_strength > 0 || error("Profile interaction_strength must be positive")
     smoothing >= 0 || error("Profile smoothing must be non-negative")
     particle_radius >= 0 || error("Profile particle_radius must be non-negative")
     opening_angle > 0 || error("Profile opening_angle must be positive")
+    expansion_order > 0 || error("Profile fmm.expansion_order must be positive")
+    0 < multipole_acceptance <= 1 || error("Profile fmm.multipole_acceptance must be in (0, 1]")
+    leaf_size > 0 || error("Profile fmm.leaf_size must be positive")
     timestep > 0 || error("Profile timestep must be positive")
     num_steps >= 0 || error("Profile steps must be non-negative")
     verification_energy_max_particles >= 0 || error("Profile verification_energy_max_particles must be non-negative")
@@ -124,11 +140,12 @@ function load_profile(path::AbstractString)
         size(positions) == size(velocities) || error("positions and velocities must have the same shape")
         length(masses) == size(positions, 2) || error("masses must contain one value per particle")
     else
-        positions, velocities, masses = _generated_particles(particles, gravitational_constant)
+        positions, velocities, masses = _generated_particles(particles, interaction_strength)
     end
 
     all(masses .> 0) || error("Profile masses must be positive")
-    return SimulationProfile(gravitational_constant, smoothing, particle_radius, opening_angle,
+    return SimulationProfile(interaction_strength, smoothing, particle_radius, opening_angle,
+                             FMMProfile(expansion_order, multipole_acceptance, leaf_size),
                              timestep, num_steps, verification_enabled,
                              verification_energy_max_particles, video_encoding_enabled, fps,
                              positions, velocities, masses)

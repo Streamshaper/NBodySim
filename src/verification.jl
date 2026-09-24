@@ -11,7 +11,7 @@ struct VerificationReference
 end
 
 function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                              gravitational_constant::Float64, smoothing::Float64,
+                              interaction_strength::Float64, smoothing::Float64,
                               max_particles::Int)
     n_particles = size(pos, 2)
     n_particles <= max_particles || return NaN
@@ -22,7 +22,7 @@ function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
         kinetic += 0.5 * masses[i] * sum(abs2, @view vel[:, i])
         for j in 1:(i - 1)
             displacement = pos[:, i] - pos[:, j]
-            potential -= gravitational_constant * masses[i] * masses[j] /
+            potential -= interaction_strength * masses[i] * masses[j] /
                          sqrt(sum(abs2, displacement) + smoothing^2)
         end
     end
@@ -30,7 +30,7 @@ function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
 end
 
 function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                               gravitational_constant::Float64, smoothing::Float64,
+                               interaction_strength::Float64, smoothing::Float64,
                                max_energy_particles::Int)
     total_mass = sum(masses)
     center_of_mass = vec(pos * masses) ./ total_mass
@@ -38,19 +38,19 @@ function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, mass
     angular_momentum = vec(sum(cross(pos[:, i], masses[i] .* vel[:, i]) for i in axes(pos, 2)))
     position_scale = max(maximum(norm.(eachcol(pos))), 1.0)
     velocity_scale = max(maximum(norm.(eachcol(vel))), 1.0)
-    energy = _verification_energy(pos, vel, masses, gravitational_constant, smoothing,
+    energy = _verification_energy(pos, vel, masses, interaction_strength, smoothing,
                                   max_energy_particles)
     return VerificationReference(total_mass, center_of_mass, momentum, angular_momentum,
                                  energy, position_scale, velocity_scale)
 end
 
 function verification_metrics(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                              gravitational_constant::Float64, smoothing::Float64,
+                              interaction_strength::Float64, smoothing::Float64,
                               reference::VerificationReference, max_energy_particles::Int)
     center_of_mass = vec(pos * masses) ./ reference.total_mass
     momentum = vec(vel * masses)
     angular_momentum = vec(sum(cross(pos[:, i], masses[i] .* vel[:, i]) for i in axes(pos, 2)))
-    energy = _verification_energy(pos, vel, masses, gravitational_constant, smoothing,
+    energy = _verification_energy(pos, vel, masses, interaction_strength, smoothing,
                                   max_energy_particles)
 
     return (

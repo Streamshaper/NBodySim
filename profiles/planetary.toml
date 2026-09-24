@@ -1,14 +1,21 @@
 [simulation]
-gravitational_constant = 6.67430e-11
+interaction_strength = 6.67430e-11
 smoothing = 1.0e4
 particle_radius = 0.0
-opening_angle = 0.5
 timestep = 86400.0
 steps = 3650
 verification_enabled = true
 verification_energy_max_particles = 0
 video_encoding_enabled = true
 fps = 60.0
+
+[barnes_hut]
+opening_angle = 0.5
+
+[fmm]
+expansion_order = 5
+multipole_acceptance = 0.4
+leaf_size = 20
 
 [particles]
 # One solar-mass central body followed by seven smaller orbiting bodies.

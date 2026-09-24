@@ -10,14 +10,14 @@ include(joinpath(@__DIR__, "verification.jl"))
 getmass(node::SpatialTree) = getcontext(node)[:mass]
 getcom(node::SpatialTree)  = getcontext(node)[:com]
 
-function grav_acc(mass::Float64, r::Vector{Float64}, gravitational_constant::Float64, smoothing::Float64)
+function grav_acc(mass::Float64, r::Vector{Float64}, interaction_strength::Float64, smoothing::Float64)
     d2 = sum(r.^2) + smoothing^2
-    return ((gravitational_constant * mass) / (d2^(1.5))) .* r
+    return ((interaction_strength * mass) / (d2^(1.5))) .* r
 end
 
 function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node::SpatialTree,
                  tree::SpatialTree, θ::Float64, all_masses::Vector{Float64},
-                 gravitational_constant::Float64, smoothing::Float64)
+                 interaction_strength::Float64, smoothing::Float64)
     s = sidelength(node)
     r = getcom(node) .- pos
 
@@ -32,15 +32,15 @@ function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node
 
             # Skip self-interaction
             if sum(r_vec.^2) > 1e-12
-                acc .+= grav_acc(all_masses[idx_orig], r_vec, gravitational_constant, smoothing)
+                acc .+= grav_acc(all_masses[idx_orig], r_vec, interaction_strength, smoothing)
             end
         end
         return acc
     elseif s / √(sum(r.^2)) < θ
-        return grav_acc(getmass(node), r, gravitational_constant, smoothing)
+        return grav_acc(getmass(node), r, interaction_strength, smoothing)
     else
         return sum(net_acc(pos, vel, mass, child, tree, θ, all_masses,
-                           gravitational_constant, smoothing) for child in children(node))
+                           interaction_strength, smoothing) for child in children(node))
     end
 end
 
@@ -77,8 +77,8 @@ function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
         acc = net_acc(pos[:, global_index], vel[:, global_index], masses[global_index], tree, tree,
-                  profile.opening_angle, masses,
-                  profile.gravitational_constant, profile.smoothing)
+                  profile.barnes_hut_opening_angle, masses,
+                  profile.interaction_strength, profile.smoothing)
         local_vel[:, local_index] .= vel[:, global_index] .+ acc .* profile.timestep
         local_pos[:, local_index] .= pos[:, global_index] .+ local_vel[:, local_index] .* profile.timestep
     end
@@ -131,11 +131,11 @@ num_particles = size(profile.positions, 2)
 num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : profile.num_steps
 verification_baseline = profile.verification_enabled ?
     verification_reference(profile.positions, profile.velocities, profile.masses,
-                           profile.gravitational_constant, profile.smoothing,
+                           profile.interaction_strength, profile.smoothing,
                            profile.verification_energy_max_particles) : nothing
 verification_rows = MPI_RANK == 0 && profile.verification_enabled ?
     [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
-                                    profile.masses, profile.gravitational_constant,
+                                    profile.masses, profile.interaction_strength,
                                     profile.smoothing, verification_baseline,
                                     profile.verification_energy_max_particles))] : nothing
 
@@ -179,7 +179,7 @@ simulation_time = @elapsed begin
             if step % log_interval == 0 || step == num_steps
                 push!(verification_rows, (step, step * profile.timestep,
                                           verification_metrics(pos, vel, masses,
-                                                               profile.gravitational_constant,
+                                                               profile.interaction_strength,
                                                                profile.smoothing, verification_baseline,
                                                                profile.verification_energy_max_particles)))
             end

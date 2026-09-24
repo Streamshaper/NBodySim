@@ -1,8 +1,7 @@
 [simulation]
-gravitational_constant = 6.67430e-11
+interaction_strength = 6.67430e-11
 smoothing = 50.0
 particle_radius = 0.0
-opening_angle = 0.5
 timestep = 1.0
 steps = 120
 verification_enabled = true
@@ -10,6 +9,14 @@ verification_enabled = true
 verification_energy_max_particles = 2000
 video_encoding_enabled = true
 fps = 1.0
+
+[barnes_hut]
+opening_angle = 0.5
+
+[fmm]
+expansion_order = 5
+multipole_acceptance = 0.4
+leaf_size = 20
 
 [particles]
 count = 25000
