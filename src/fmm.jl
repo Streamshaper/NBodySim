@@ -41,8 +41,12 @@ end
 
 function update_body_positions!(system::GravitationalSystem{Float64}, positions, indices)
     @inbounds for (body_index, position_index) in enumerate(indices)
-        system.bodies[body_index].position = SVector{3,Float64}(
-            positions[1, position_index], positions[2, position_index], positions[3, position_index])
+        old_body = system.bodies[body_index]
+        system.bodies[body_index] = FMMBody(
+            SVector{3,Float64}(positions[1, position_index], positions[2, position_index], positions[3, position_index]),
+            old_body.radius,
+            old_body.strength
+        )
     end
 end
 
@@ -89,18 +93,17 @@ function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Ve
                                  smoothing = profile.smoothing,
                                  interaction_strength = profile.interaction_strength)
     
-    # API fix: Silenced the missing 'get_previous_influence' warning natively
-        fmm!(system; gradient = true,
-            expansion_order = profile.fmm.expansion_order,
-            multipole_acceptance = profile.fmm.multipole_acceptance,
-            leaf_size = profile.fmm.leaf_size,
-            silence_warnings = true)
-    
+    fmm!(system; gradient = true,
+        expansion_order = profile.fmm.expansion_order,
+        multipole_acceptance = profile.fmm.multipole_acceptance,
+        leaf_size = profile.fmm.leaf_size,
+        silence_warnings = true) 
+
     accs = @view system.potential[5:7, :]
     
     # FastMultipole returns the inward gravitational gradient for positive masses.
-    vel .+= accs .* Δt
-    pos .+= vel .* Δt
+    vel .+= accs .* profile.timestep
+    pos .+= vel .* profile.timestep
 end
 
 function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
@@ -120,10 +123,10 @@ function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
     fill!(local_vel, 0.0)
     update_body_positions!(source_system, pos, axes(pos, 2))
     update_body_positions!(target_system, pos, local_range)
-        fmm!(target_system, source_system; gradient = true,
+
+	fmm!(target_system, source_system; gradient = true,
             expansion_order = profile.fmm.expansion_order,
             multipole_acceptance = profile.fmm.multipole_acceptance,
-            leaf_size = profile.fmm.leaf_size,
             silence_warnings = true)
 
     accs = @view target_system.potential[5:7, :]
