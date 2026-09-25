@@ -1,64 +1,32 @@
 using DrWatson
 @quickactivate "AHRB"
 
-using AbstractTrees, AdaptiveHierarchicalRegularBinning, BenchmarkTools, Random, DataFrames, ColorSchemes, Colors, ProgressMeter, CairoMakie
+using BenchmarkTools, Random, DataFrames, ColorSchemes, Colors, ProgressMeter, CairoMakie
 using Printf
 using MPI
 include(joinpath(@__DIR__, "profile.jl"))
 include(joinpath(@__DIR__, "verification.jl"))
 include(joinpath(@__DIR__, "video_encoding.jl"))
 
-getmass(node::SpatialTree) = getcontext(node)[:mass]
-getcom(node::SpatialTree)  = getcontext(node)[:com]
-
 function grav_acc(mass::Float64, r::Vector{Float64}, interaction_strength::Float64, smoothing::Float64)
     d2 = sum(r.^2) + smoothing^2
     return ((interaction_strength * mass) / (d2^(1.5))) .* r
 end
 
-function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node::SpatialTree,
-                 tree::SpatialTree, θ::Float64, all_masses::Vector{Float64},
-                 interaction_strength::Float64, smoothing::Float64)
-    s = sidelength(node)
-    r = getcom(node) .- pos
-
-    if isleaf(node)
-        pp  = points(node)
-        idx = range(node)
-        acc = zeros(3)
-
-        for i in axes(pp, 2)
-            idx_orig = tree.info.perm[idx[i]]
-            r_vec = pp[:, i] .- pos
-
-            # Skip self-interaction
-            if sum(r_vec.^2) > 1e-12
-                acc .+= grav_acc(all_masses[idx_orig], r_vec, interaction_strength, smoothing)
-            end
+# O(N^2) Direct summation for a single particle
+function net_acc_direct(pos::Matrix{Float64}, p_idx::Int, masses::Vector{Float64},
+                        interaction_strength::Float64, smoothing::Float64)
+    acc = zeros(3)
+    pos_i = pos[:, p_idx]
+    
+    for j in axes(pos, 2)
+        if j != p_idx
+            r_vec = pos[:, j] .- pos_i
+            acc .+= grav_acc(masses[j], r_vec, interaction_strength, smoothing)
         end
-        return acc
-    elseif s / √(sum(r.^2)) < θ
-        return grav_acc(getmass(node), r, interaction_strength, smoothing)
-    else
-        return sum(net_acc(pos, vel, mass, child, tree, θ, all_masses,
-                           interaction_strength, smoothing) for child in children(node))
-    end
-end
-
-function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64}, tree::SpatialTree, Δt::Float64, θ::Float64)
-    n_particles = size(pos, 2)
-    accs = zeros(3, n_particles)
-    
-    # Calculate all forces first (Thread-safe)
-    Threads.@threads for i in 1:n_particles
-        accs[:, i] = net_acc(pos[:, i], vel[:, i], masses[i], tree, tree, θ, masses)
     end
     
-    # Update positions and velocities after all forces are known
-    for i in 1:n_particles
-        vel[:, i] .+= accs[:, i] .* Δt
-        pos[:, i] .+= vel[:, i] .* Δt
-    end
+    return acc
 end
 
 function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
@@ -69,19 +37,19 @@ function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
 end
 
 function simulation_step_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                             tree::SpatialTree, profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
+                              profile, comm, rank::Int, n_ranks::Int)
     local_pos = zeros(size(pos))
     local_vel = zeros(size(vel))
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
 
+    # Calculate all forces first (Thread-safe)
     Threads.@threads for i in local_range
-        acc = net_acc(pos[:, i], vel[:, i], masses[i], tree, tree,
-                  profile.barnes_hut_opening_angle, masses,
-                  profile.interaction_strength, profile.smoothing)
+        acc = net_acc_direct(pos, i, masses, profile.interaction_strength, profile.smoothing)
         local_vel[:, i] .= vel[:, i] .+ acc .* profile.timestep
         local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* profile.timestep
     end
 
+    # Aggregate back across MPI ranks
     MPI.Allreduce!(local_pos, pos, +, comm)
     MPI.Allreduce!(local_vel, vel, +, comm)
 end
@@ -92,30 +60,6 @@ const MPI_RANK = MPI.Comm_rank(MPI_COMM)
 const MPI_SIZE = MPI.Comm_size(MPI_COMM)
 
 # ---------------------------------------------------------
-# TREE INITIALIZATION HELPER
-# ---------------------------------------------------------
-function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
-    foreach(PostOrderDFS(tree)) do node
-        if isleaf(node)
-            p_idx = tree.info.perm[range(node)]
-            m_sum = sum(@view masses[p_idx])
-            pts   = points(node)
-            c_m   = m_sum > 0 ? (pts * masses[p_idx]) ./ m_sum : zeros(3)
-            setcontext!(node, (; com = c_m, mass = m_sum))
-        else
-            c_m   = zeros(3)
-            m_sum = 0.0
-            for child in children(node)
-                c_m   .+= getcontext(child)[:com] .* getcontext(child)[:mass]
-                m_sum  += getcontext(child)[:mass]
-            end
-            c_m ./= (m_sum > 0 ? m_sum : 1.0)
-            setcontext!(node, (; com = c_m, mass = m_sum))
-        end
-    end
-end
-
-# ---------------------------------------------------------
 # MAIN SIMULATION
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
@@ -124,6 +68,7 @@ profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR_
 profile = load_profile(profile_file)
 num_particles = size(profile.positions, 2)
 num_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : profile.num_steps
+
 verification_baseline = profile.verification_enabled ?
     verification_reference(profile.positions, profile.velocities, profile.masses,
                            profile.interaction_strength, profile.smoothing,
@@ -153,10 +98,8 @@ log_interval = max(1, num_steps ÷ 10) # Log every 10%
 
 simulation_time = @elapsed begin
     for step in 1:num_steps
-        tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
-
-        update_mass_com!(tree, masses)
-        simulation_step_mpi!(pos, vel, masses, tree, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
+        simulation_step_mpi!(pos, vel, masses, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
+        
         if MPI_RANK == 0 && profile.video_encoding_enabled
             push!(frames, copy(pos))
         end
@@ -180,9 +123,9 @@ simulation_time = @elapsed begin
 end
 
 if MPI_RANK == 0
-    println("Total simulation time: $simulation_time seconds")
+    println("Total simulation time (Direct O(N^2)): $simulation_time seconds")
     if profile.verification_enabled
-        verification_file = joinpath("logs", "verification_barnes_hut_$(num_particles)p_$(num_steps)s.csv")
+        verification_file = joinpath("logs", "verification_direct_$(num_particles)p_$(num_steps)s.csv")
         mkpath(dirname(verification_file))
         open(verification_file, "w") do io
             write_verification_header(io)
@@ -201,7 +144,7 @@ if MPI_RANK == 0
 end
 
 if MPI_RANK == 0 && profile.video_encoding_enabled
-    encode_video_and_log(frames, masses, num_particles, num_steps, profile.fps, simulation_time, "B_H", "barneshut")
+    encode_video_and_log(frames, masses, num_particles, num_steps, profile.fps, simulation_time, "Direct", "direct")
 end
 
 MPI.Barrier(MPI_COMM)
