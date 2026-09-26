@@ -156,7 +156,7 @@ if MPI_RANK == 0
 end
 
 if MPI_RANK == 0 && profile.video_encoding_enabled
-    encode_video_and_log(frames, masses, num_particles, num_steps, profile.fps, simulation_time, "Direct", "direct")
+    encode_video_and_log(frames, masses, num_particles, num_steps, round(Int, profile.fps), simulation_time, "Direct", "direct")
 end
 
 if MPI_RANK == 0 && profile.store_data

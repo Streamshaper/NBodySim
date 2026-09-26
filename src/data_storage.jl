@@ -15,11 +15,11 @@ function save_simulation_hdf5(frames::Vector{Matrix{Float64}},
     
     h5open(h5_filename, "w") do h5file
         # Write Metadata Attributes
-        attributes(h5file)["interaction_strength"] = profile.interaction_strength
-        attributes(h5file)["smoothing"] = profile.smoothing
-        attributes(h5file)["timestep"] = profile.timestep
-        attributes(h5file)["num_particles"] = num_particles
-        attributes(h5file)["num_steps"] = num_steps
+        HDF5.attributes(h5file)["interaction_strength"] = profile.interaction_strength
+        HDF5.attributes(h5file)["smoothing"] = profile.smoothing
+        HDF5.attributes(h5file)["timestep"] = profile.timestep
+        HDF5.attributes(h5file)["num_particles"] = num_particles
+        HDF5.attributes(h5file)["num_steps"] = num_steps
         
         # Write Static Data
         h5file["masses"] = masses
