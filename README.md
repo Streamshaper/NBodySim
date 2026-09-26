@@ -1,94 +1,154 @@
-# NBodySim profiles
+# NBodySim
 
-Each solver accepts a TOML profile as its first argument:
+NBodySim is a high-performance, Julia-based 3D gravitational N-body simulation framework. It calculates gravitational interactions using multiple algorithmic solvers and is designed for both local execution and distributed computing clusters via MPI and multi-threading.
 
-```text
+## Core Features
+
+* **Direct Summation**: A baseline $O(N^2)$ solver for exact gravitational interaction calculations.
+
+
+* **Barnes-Hut**: A tree-based approximation algorithm utilizing `AdaptiveHierarchicalRegularBinning` for spatial partitioning.
+
+
+* **Fast Multipole Method (FMM)**: An advanced, highly scalable approximation solver utilizing the `FastMultipole` package.
+
+
+* **Hybrid Parallelization**: Distributes the workload across cluster nodes using MPI, while utilizing Julia's native multi-threading (`Threads.@threads`) for calculations on each rank.
+
+
+* **Automated Visualization**: Automatically renders and exports 3D animated visualizations of the simulation to `.mp4` using `CairoMakie` based on the configurable frames per second (`fps`).
+
+
+* **Physics Verification**: Computes system energy, center-of-mass drift, and momentum/angular momentum conservation, writing checkpoint metrics to CSV logs.
+
+
+
+## Requirements and Installation
+
+NBodySim requires **Julia 1.11.3** and an MPI implementation (e.g., MPICH or OpenMPI).
+
+The repository utilizes `DrWatson.jl` for environment management. If running on the **Aristotle HPC** (where this project was developed), you must export the following environment variables before downloading or installing Julia packages to ensure proper network routing and stability:
+
+```bash
+export JULIA_DOWNLOADS_USE_CURL=true
+export JULIA_PKG_SERVER=""
+export JULIA_NUM_THREADS=1
+
+```
+
+Once your environment variables are set, instantiate the project environment:
+
+```julia
+using Pkg
+Pkg.instantiate()
+
+```
+
+## Usage
+
+Each solver accepts a TOML profile as its first argument and an optional second argument to override the number of simulation steps.
+
+### Running Locally
+
+Execute the solvers directly using Julia:
+
+```bash
 julia --project=. src/fmm.jl profiles/default.toml
 julia --project=. src/barneshut.jl profiles/default.toml 50
+
 ```
 
-The optional second argument overrides the number of steps. A profile contains
-the physical parameters and either a reproducible disk generator or an exact
-particle state:
-```toml
-[simulation]
-interaction_strength = 6.67430e-11
-smoothing = 100.0
-particle_radius = 0.0
-timestep = 1.0
-steps = 120
+### Running on a SLURM Cluster
 
-[barnes_hut]
-opening_angle = 0.5
+To dispatch a simulation job to a SLURM queue, use the provided `submit.sh` bash script. It requires the target Julia script (the solver) and an optional profile name. It falls back to the `planetary` profile if omitted.
 
-[fmm]
-expansion_order = 5
-multipole_acceptance = 0.4
-leaf_size = 20
+```bash
+# Usage: sbatch submit.sh <script_name> [profile_name]
+sbatch submit.sh fmm default
 
-[particles]
-count = 1000
-seed = 42
-total_mass = 1.0e15
-radius_min = 2.0e4
-radius_max = 8.0e4
-z_half_width = 1.0e3
 ```
 
-For a small fully fixed initial state, matching three-dimensional rows can be
-stored directly in TOML:
+You can monitor the live `.out` log of a queued job before SLURM archives it by running the included watcher script:
+
+```bash
+./watch.sh
+
+```
+
+## Configuration Profiles
+
+Simulations are controlled entirely via `.toml` configuration profiles. Profiles contain physical parameters and particle generation settings.
+
+### Core Parameters
+
+* `interaction_strength`: Sets the effective pairwise interaction strength (e.g., the gravitational constant for Newtonian gravity).
+
+
+* `smoothing`: The Plummer softening length utilized in Barnes-Hut and FMM calculations to prevent singularities.
+
+
+* `particle_radius`: The physical radius supplied to FMM for its particle geometry, independent of the force softening length.
+
+
+* `barnes_hut.opening_angle`: The Barnes-Hut opening parameter ($\theta$) that determines when to approximate a distant cluster of masses as a single node.
+
+
+* `fmm.expansion_order`: The FMM multipole expansion order.
+
+
+* `fmm.multipole_acceptance`: The FMM multipole acceptance criterion.
+
+
+* `fmm.leaf_size`: The maximum number of particles per FMM leaf.
+
+
+
+### Particle Generation
+
+You can define dynamic particle generation by providing a `count`, `seed`, `total_mass`, and spatial constraints (`radius_min`, `radius_max`, `z_half_width`).
+
+Alternatively, for small, fully fixed initial states, you can provide the 3D rows directly in the TOML file:
 
 ```toml
 [particles]
 positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 velocities = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 masses = [1.0, 1.0]
+
 ```
 
-Each solver writes checkpoint verification metrics to `logs/verification_*.csv` and
-prints the final values. The metrics include center-of-mass drift, relative linear
-momentum change, relative angular-momentum change, and relative total-energy change.
-Set `simulation.verification_enabled = false` to disable all verification work and
-CSV output while retaining the energy limit for enabled runs.
-The energy uses the same Plummer-softened potential as the force calculation and is
-computed exactly only when the particle count is at most
-`simulation.verification_energy_max_particles` (default `2000`); otherwise the energy
-columns are `NaN` while the O(N) conservation checks remain active.
+An example of a fixed state is the included `planetary.toml`, which simulates one solar-mass central body and seven smaller orbiting bodies using meters, kilograms, and a timestep of 86400.0 seconds (one day).
 
-Set `simulation.video_encoding_enabled = false` to skip frame retention and CairoMakie
-video encoding entirely.
-Set `simulation.fps` to control the encoded video's frame rate; it defaults to `1.0`.
+### Binary State Files
 
-For hundreds of thousands of particles, store the state in the compact binary
-format used by `profiles/fixed_state.toml`:
+For simulations with hundreds of thousands of particles, storing the state in a compact binary format avoids parsing massive TOML tables and ensures reproducibility. In your profile, specify the path to the binary file:
 
 ```toml
 [particles]
 state_file = "particles.bin"
+
 ```
 
-Create the file from Julia with `write_particle_state`:
+You can generate this binary file directly from Julia using the `write_particle_state` helper, which writes a format header, the particle count, and the contiguous `Float64` position, velocity, and mass arrays:
 
 ```julia
 include("src/profile.jl")
 write_particle_state("particles.bin", positions, velocities, masses)
+
 ```
 
-The binary file contains a small format header, the particle count, then the
-contiguous `Float64` position, velocity, and mass arrays. This avoids parsing
-large TOML tables and keeps the exact initial state reproducible.
+## Outputs & Verification
 
-`barnes_hut.opening_angle` is the Barnes-Hut opening parameter.
-`fmm.expansion_order` is the FMM multipole expansion order,
-`fmm.multipole_acceptance` is the FMM multipole acceptance criterion, and
-`fmm.leaf_size` is the number of particles per FMM leaf. `interaction_strength`
-sets the effective pairwise interaction strength for the selected physical model
-(for Newtonian gravity this is the gravitational constant). `smoothing` is the
-Plummer softening length in Barnes-Hut and FMM calculations. `particle_radius`
-is the physical radius supplied to FMM for its particle geometry; it is
-independent of the force softening length.
+Upon completion, the simulation generates the following artifacts:
 
-`profiles/planetary.toml` contains a hardcoded 11-body system: one solar-mass
-central body and ten smaller orbiting bodies. Its positions use metres, velocities
-use metres per second, masses use kilograms, and its timestep is one day. Video
-encoding is enabled by default for this profile.
+* **HDF5 Data (`output/simulations/`)**: High-performance chunked and compressed data files storing particle positions, velocities, and static masses at each timestep. Toggle this via `simulation.store_data`.
+
+
+* **Video Animation (`output/`)**: If `simulation.video_encoding_enabled` is set to `true`, a dual-angle 3D MP4 animation is exported.
+
+
+* **Verification Logs (`logs/verification_*.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change.
+
+
+
+Verification can be disabled by setting `simulation.verification_enabled = false`. Total energy calculation uses the Plummer-softened potential and scales at $O(N^2)$. To maintain performance in large simulations, exact energy is only computed if the particle count is below `simulation.verification_energy_max_particles` (default 2000); otherwise, the energy columns return `NaN` while the $O(N)$ momentum conservation checks remain active.
