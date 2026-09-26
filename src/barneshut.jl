@@ -7,6 +7,7 @@ using MPI
 include(joinpath(@__DIR__, "profile.jl"))
 include(joinpath(@__DIR__, "verification.jl"))
 include(joinpath(@__DIR__, "video_encoding.jl"))
+include(joinpath(@__DIR__, "data_storage.jl"))
 
 getmass(node::SpatialTree) = getcontext(node)[:mass]
 getcom(node::SpatialTree)  = getcontext(node)[:com]
@@ -42,22 +43,6 @@ function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node
     else
         return sum(net_acc(pos, vel, mass, child, tree, θ, all_masses,
                            interaction_strength, smoothing) for child in children(node))
-    end
-end
-
-function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64}, tree::SpatialTree, Δt::Float64, θ::Float64)
-    n_particles = size(pos, 2)
-    accs = zeros(3, n_particles)
-    
-    # Calculate all forces first (Thread-safe)
-    Threads.@threads for i in 1:n_particles
-        accs[:, i] = net_acc(pos[:, i], vel[:, i], masses[i], tree, tree, θ, masses)
-    end
-    
-    # Update positions and velocities after all forces are known
-    for i in 1:n_particles
-        vel[:, i] .+= accs[:, i] .* Δt
-        pos[:, i] .+= vel[:, i] .* Δt
     end
 end
 
@@ -119,6 +104,7 @@ end
 # MAIN SIMULATION
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
+vel_frames = Vector{Matrix{Float64}}()
 profile_path = length(ARGS) >= 1 ? ARGS[1] : "profiles/default.toml"
 profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
 profile = load_profile(profile_file)
@@ -140,8 +126,13 @@ MPI.Bcast!(pos, 0, MPI_COMM)
 MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
-if MPI_RANK == 0 && profile.video_encoding_enabled
-    push!(frames, copy(pos)) # Push initial state (t=0)
+if MPI_RANK == 0
+    if profile.video_encoding_enabled || profile.store_data
+        push!(frames, copy(pos)) 
+    end
+    if profile.store_data
+        push!(vel_frames, copy(vel)) # Track velocities for HDF5
+    end
 end
 
 if MPI_RANK == 0
@@ -157,8 +148,13 @@ simulation_time = @elapsed begin
 
         update_mass_com!(tree, masses)
         simulation_step_mpi!(pos, vel, masses, tree, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
-        if MPI_RANK == 0 && profile.video_encoding_enabled
-            push!(frames, copy(pos))
+        if MPI_RANK == 0 
+            if profile.video_encoding_enabled || profile.store_data
+                push!(frames, copy(pos))
+            end
+            if profile.store_data
+                push!(vel_frames, copy(vel))
+            end
         end
         if MPI_RANK == 0 && profile.verification_enabled
             if step % log_interval == 0 || step == num_steps
@@ -202,6 +198,10 @@ end
 
 if MPI_RANK == 0 && profile.video_encoding_enabled
     encode_video_and_log(frames, masses, num_particles, num_steps, profile.fps, simulation_time, "B_H", "barneshut")
+end
+
+if MPI_RANK == 0 && profile.store_data
+    save_simulation_hdf5(frames, vel_frames, masses, profile, num_particles, num_steps, "B-H")
 end
 
 MPI.Barrier(MPI_COMM)

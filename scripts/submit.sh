@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=julia_job       # Name of your job
-#SBATCH --output=logs/julia_%j.out       # Output log (%j will be replaced by Job ID)
-#SBATCH --error=logs/julia_%j.err        # Error log
+#SBATCH --job-name=NBS		       	# Job name
+#SBATCH --output=logs/julia_%j.out 	# Output log (%j will be replaced by Job ID)
+#SBATCH --error=logs/julia_%j.err  	# Error log
 #SBATCH --nodes=1                   # Number of nodes
 #SBATCH --ntasks-per-node=1         # Keep ranks distributed across nodes
 #SBATCH --cpus-per-task=8           # Number of Julia threads per MPI rank
@@ -40,7 +40,7 @@ srun --mpi=pmi2 --ntasks="$SLURM_NTASKS" --ntasks-per-node=1 \
 
 
 # LOG ORGANIZATION
-# Create a subfolder for current date (e.g., logs/2026-09-25)
+# Create a subfolder for current date
 DATE_DIR="logs/$(date +%Y-%m-%d)"
 mkdir -p "$DATE_DIR"
 

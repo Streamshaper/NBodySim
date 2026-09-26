@@ -6,6 +6,7 @@ timestep = 1.0
 steps = 120
 verification_enabled = true
 verification_energy_max_particles = 2000
+store_data = true
 video_encoding_enabled = true
 fps = 1.0
 

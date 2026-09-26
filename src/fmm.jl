@@ -7,6 +7,7 @@ using FastMultipole.StaticArrays: SVector, SMatrix
 include(joinpath(@__DIR__, "profile.jl"))
 include(joinpath(@__DIR__, "verification.jl"))
 include(joinpath(@__DIR__, "video_encoding.jl"))
+include(joinpath(@__DIR__, "data_storage.jl"))
 
 struct FMMBody{T}
     position::SVector{3,T}
@@ -78,24 +79,6 @@ function FastMultipole.buffer_to_target_system!(target_system::GravitationalSyst
     target_system.potential[5:7, i_target] .= gradient
 end
 
-function simulation_step!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64}, profile::SimulationProfile)
-    system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
-                                 smoothing = profile.smoothing,
-                                 interaction_strength = profile.interaction_strength)
-    
-    fmm!(system; gradient = true,
-        expansion_order = profile.fmm.expansion_order,
-        multipole_acceptance = profile.fmm.multipole_acceptance,
-        leaf_size = profile.fmm.leaf_size,
-        silence_warnings = true) 
-
-    accs = @view system.potential[5:7, :]
-    
-    # FastMultipole returns the inward gravitational gradient for positive masses.
-    vel .+= accs .* profile.timestep
-    pos .+= vel .* profile.timestep
-end
-
 function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)
     base, remainder = divrem(n_particles, n_ranks)
     first_particle = rank * base + min(rank, remainder) + 1
@@ -149,6 +132,7 @@ end
 # MAIN SIMULATION
 # ---------------------------------------------------------
 frames = Vector{Matrix{Float64}}()
+vel_frames = Vector{Matrix{Float64}}()
 profile_path = length(ARGS) >= 1 ? ARGS[1] : "profiles/default.toml"
 profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
 profile = load_profile(profile_file)
@@ -171,8 +155,13 @@ MPI.Bcast!(vel, 0, MPI_COMM)
 MPI.Bcast!(masses, 0, MPI_COMM)
 
 
-if MPI_RANK == 0 && profile.video_encoding_enabled
-    push!(frames, copy(pos)) # Push initial state (t=0)
+if MPI_RANK == 0
+    if profile.video_encoding_enabled || profile.store_data
+        push!(frames, copy(pos)) 
+    end
+    if profile.store_data
+        push!(vel_frames, copy(vel)) # Track velocities for HDF5
+    end
 end
 
 if MPI_RANK == 0
@@ -185,8 +174,13 @@ log_interval = max(1, num_steps ÷ 10) # Log every 10%
 simulation_time = @elapsed begin
     for step in 1:num_steps
         simulation_step_mpi!(pos, vel, masses, profile, MPI_COMM, MPI_RANK, MPI_SIZE)
-        if MPI_RANK == 0 && profile.video_encoding_enabled
-            push!(frames, copy(pos))
+        if MPI_RANK == 0 
+            if profile.video_encoding_enabled || profile.store_data
+                push!(frames, copy(pos))
+            end
+            if profile.store_data
+                push!(vel_frames, copy(vel))
+            end
         end
         if MPI_RANK == 0 && profile.verification_enabled
             if step % log_interval == 0 || step == num_steps
@@ -230,6 +224,10 @@ end
 
 if MPI_RANK == 0 && profile.video_encoding_enabled
     encode_video_and_log(frames, masses, num_particles, num_steps, profile.fps, simulation_time, "FMM", "fmm")
+end
+
+if MPI_RANK == 0 && profile.store_data
+    save_simulation_hdf5(frames, vel_frames, masses, profile, num_particles, num_steps, "FMM")
 end
 
 MPI.Barrier(MPI_COMM)

@@ -6,6 +6,7 @@ timestep = 86400.0
 steps = 3650
 verification_enabled = true
 verification_energy_max_particles = 0
+store_data = true
 video_encoding_enabled = true
 fps = 60.0
 

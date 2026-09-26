@@ -3,7 +3,7 @@ using CairoMakie
 using Printf
 
 function encode_video_and_log(frames::Vector{Matrix{Float64}}, masses::Vector{Float64}, 
-                              num_particles::Int, num_steps::Int, fps::Int, 
+                              num_particles::Int, num_steps::Int, fps::Real, 
                               simulation_time::Float64, algorithm_type::String, file_prefix::String)
     
     # Ensure the output directory exists
