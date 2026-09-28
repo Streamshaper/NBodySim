@@ -1,8 +1,0 @@
-┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
-└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67
-┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
-└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67
-┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
-└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67
-┌ Warning: get_previous_influence not overloaded for type GravitationalSystem{Float64}; relative error prediction will not be used
-└ @ FastMultipole ~/.julia/packages/FastMultipole/1XkJp/src/compatibility.jl:67

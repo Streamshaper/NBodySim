@@ -1,25 +1,0 @@
-[KCompiling physics functions... ⠋[KCompiling physics functions... Done! ✨
-Starting Galaxy Simulation...
-Simulation progress: 100 / 1000 steps (10%)
-Simulation progress: 200 / 1000 steps (20%)
-Simulation progress: 300 / 1000 steps (30%)
-Simulation progress: 400 / 1000 steps (40%)
-Simulation progress: 500 / 1000 steps (50%)
-Simulation progress: 600 / 1000 steps (60%)
-Simulation progress: 700 / 1000 steps (70%)
-Simulation progress: 800 / 1000 steps (80%)
-Simulation progress: 900 / 1000 steps (90%)
-Simulation progress: 1000 / 1000 steps (100%)
-Setting up CairoMakie animation...
-Starting video encoding to output/bh-animation_1000p_1000s.mp4 ...
-Encoding video: frame 100 / 1001 (10%)
-Encoding video: frame 200 / 1001 (20%)
-Encoding video: frame 300 / 1001 (30%)
-Encoding video: frame 400 / 1001 (40%)
-Encoding video: frame 500 / 1001 (50%)
-Encoding video: frame 600 / 1001 (60%)
-Encoding video: frame 700 / 1001 (70%)
-Encoding video: frame 800 / 1001 (80%)
-Encoding video: frame 900 / 1001 (90%)
-Encoding video: frame 1000 / 1001 (100%)
-Saved output/bh-animation_1000p_1000s.mp4 successfully!

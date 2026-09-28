@@ -1,14 +1,14 @@
 [simulation]
 interaction_strength = 6.67430e-11
-smoothing = 50.0
+smoothing = 100.0
 particle_radius = 0.0
-timestep = 1.0
-steps = 120
+timestep = 300
+steps = 2400
 verification_enabled = true
 verification_energy_max_particles = 2000
 store_data = true
 video_encoding_enabled = true
-fps = 1.0
+fps = 60
 
 [barnes_hut]
 opening_angle = 0.5
@@ -19,12 +19,12 @@ multipole_acceptance = 0.4
 leaf_size = 20
 
 [particles]
-count = 25000
+count = 2500
 seed = 1
-total_mass = 1.0e15
+total_mass = 2.0e15
 radius_min = 2.0e5
 radius_max = 8.0e5
-z_half_width = 1.0e3
+z_half_width = 1.0e4
 
 # For a fixed state, replace the generator settings with:
 # positions = [[x1, y1, z1], [x2, y2, z2]]

@@ -51,8 +51,16 @@ function encode_video_and_log(frames::Vector{Matrix{Float64}}, masses::Vector{Fl
     x_obs = Observable(frames[1][1, :] ./ plot_scale)
     y_obs = Observable(frames[1][2, :] ./ plot_scale)
     z_obs = Observable(frames[1][3, :] ./ plot_scale)
-    mass_scale = cbrt.(masses ./ maximum(masses))
-    marker_sizes = 1.5 .+ 9.0 .* mass_scale
+
+    min_mass = minimum(masses)
+    max_mass = maximum(masses)
+    
+    if isapprox(min_mass, max_mass)
+        marker_sizes = fill(1.5, length(masses))
+    else
+        mass_scale = cbrt.(masses ./ max_mass)
+        marker_sizes = 1.5 .+ 9.0 .* mass_scale
+    end
 
     # Draw the initial scatter plot into both axes
     for ax in axs

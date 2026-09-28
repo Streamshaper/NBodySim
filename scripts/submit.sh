@@ -2,11 +2,11 @@
 #SBATCH --job-name=NBS		       	# Job name
 #SBATCH --output=logs/julia_%j.out 	# Output log (%j will be replaced by Job ID)
 #SBATCH --error=logs/julia_%j.err  	# Error log
-#SBATCH --nodes=1                   # Number of nodes
+#SBATCH --nodes=2                   # Number of nodes
 #SBATCH --ntasks-per-node=1         # Keep ranks distributed across nodes
-#SBATCH --cpus-per-task=8           # Number of Julia threads per MPI rank
-#SBATCH --time=00:20:00             # Maximum run time (HH:MM:SS)
-#SBATCH --partition=batch           # Specify partition/queue
+#SBATCH --cpus-per-task=64           # Number of Julia threads per MPI rank
+#SBATCH --time=02:00:00             # Maximum run time (HH:MM:SS)
+#SBATCH --partition=rome           # Specify partition/queue
 
 # Strip extensions if the user accidentally includes them
 SCRIPT_BASE=${1%.jl}

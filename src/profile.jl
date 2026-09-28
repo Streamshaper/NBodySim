@@ -41,7 +41,7 @@ end
 
 function _generated_particles(particles, interaction_strength)
     count = Int(_required(particles, "count", "particles"))
-    count > 0 || error("Profile particle count must be positive")
+    count > 1 || error("Profile particle count must be at least 2 for a central body system")
     seed = Int(get(particles, "seed", 1))
     rng = MersenneTwister(seed)
     total_mass = Float64(get(particles, "total_mass", 1.0e15))
@@ -51,15 +51,30 @@ function _generated_particles(particles, interaction_strength)
 
     positions = zeros(3, count)
     velocities = zeros(3, count)
-    masses = fill(total_mass / count, count)
-    for index in 1:count
+    masses = zeros(count)
+    
+    # 1. Central Body
+    central_mass = total_mass / 2.0
+    masses[1] = central_mass
+    positions[:, 1] .= (0.0, 0.0, 0.0)
+    velocities[:, 1] .= (0.0, 0.0, 0.0)
+    
+    # 2. Orbiting Bodies
+    orbiter_mass = central_mass / (count - 1)
+    
+    for index in 2:count
+        masses[index] = orbiter_mass
         angle = 2π * rand(rng)
         radius = radius_min + (radius_max - radius_min) * rand(rng)
+        
         positions[:, index] .= (radius * cos(angle), radius * sin(angle),
                                 (2rand(rng) - 1) * z_half_width)
-        speed = sqrt(interaction_strength * total_mass / radius)
+        
+        # Calculate speed based on the central mass for a stable Keplerian orbit
+        speed = sqrt(interaction_strength * central_mass / radius)
         velocities[:, index] .= (-speed * sin(angle), speed * cos(angle), 0.0)
     end
+    
     return positions, velocities, masses
 end
 
