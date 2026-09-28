@@ -1,6 +1,5 @@
 output/*
 logs/*
-Manifest.toml
 
 !output/.gitkeep
 !logs/.gitkeep
