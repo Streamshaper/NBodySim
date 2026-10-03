@@ -1,5 +1,6 @@
 using HDF5
 
+# Save simulation frames to one HDF5 dataset.
 function save_simulation_hdf5(frames::Vector{Matrix{Float64}}, 
                               vel_frames::Vector{Matrix{Float64}}, 
                               masses::Vector{Float64}, 

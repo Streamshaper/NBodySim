@@ -46,25 +46,25 @@ Pkg.instantiate()
 
 ## Usage
 
-Each solver accepts a TOML profile as its first argument and an optional second argument to override the number of simulation steps.
+Use the front-end wrapper in the src directory to select the solver by model name. The wrapper accepts the algorithm, an optional profile path, and an optional step override.
 
 ### Running Locally
 
-Execute the solvers directly using Julia:
-
 ```bash
-julia --project=. src/fmm.jl profiles/default.toml
-julia --project=. src/barneshut.jl profiles/default.toml 50
-
+julia --project=. src/nbodysim.jl direct profiles/default.toml
+julia --project=. src/nbodysim.jl barneshut profiles/default.toml 50
+julia --project=. src/nbodysim.jl fmm profiles/default.toml
 ```
+
+The individual solver entry points still work when launched directly, but the wrapper is the recommended front-end.
 
 ### Running on a SLURM Cluster
 
 To dispatch a simulation job to a SLURM queue, use the provided `submit.sh` bash script. It requires the target Julia script (the solver) and an optional profile name. It falls back to the `planetary` profile if omitted.
 
 ```bash
-# Usage: sbatch submit.sh <script_name> [profile_name]
-sbatch submit.sh fmm default
+# Usage: sbatch scripts/submit.sh <model_name> [profile_name]
+sbatch scripts/submit.sh fmm default
 
 ```
 

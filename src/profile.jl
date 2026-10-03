@@ -1,6 +1,7 @@
 using TOML
 using Random
 
+# Particle-state file tag.
 const PARTICLE_STATE_MAGIC = UInt8[0x4e, 0x42, 0x53, 0x31]
 
 struct FMMProfile
@@ -27,11 +28,13 @@ struct SimulationProfile
     masses::Vector{Float64}
 end
 
+# Require a config value.
 function _required(table, key, section)
     haskey(table, key) || error("Profile is missing [$section].$key")
     return table[key]
 end
 
+# Convert 3D rows to the internal 3×N matrix layout.
 function _particle_matrix(value, name)
     rows = [Float64.(row) for row in value]
     isempty(rows) && error("Profile particle field '$name' cannot be empty")
@@ -39,6 +42,7 @@ function _particle_matrix(value, name)
     return permutedims(reduce(vcat, (permutedims(row) for row in rows)))
 end
 
+# Generate a central-mass system with orbiting satellites.
 function _generated_particles(particles, interaction_strength)
     count = Int(_required(particles, "count", "particles"))
     count > 1 || error("Profile particle count must be at least 2 for a central body system")
@@ -78,6 +82,7 @@ function _generated_particles(particles, interaction_strength)
     return positions, velocities, masses
 end
 
+# Persist a particle state for later reloads.
 function write_particle_state(path::AbstractString, positions::Matrix{Float64},
                               velocities::Matrix{Float64}, masses::Vector{Float64})
     size(positions, 1) == 3 || error("positions must have shape 3 × N")
@@ -112,6 +117,7 @@ function _load_particle_state(path::AbstractString)
     end
 end
 
+# Load the profile and resolve the particle source.
 function load_profile(path::AbstractString)
     data = TOML.parsefile(path)
     simulation = get(data, "simulation", Dict{String, Any}())

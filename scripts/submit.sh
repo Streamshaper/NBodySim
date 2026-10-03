@@ -9,22 +9,38 @@
 #SBATCH --partition=rome           # Specify partition/queue
 
 # Strip extensions if the user accidentally includes them
-SCRIPT_BASE=${1%.jl}
-PROFILE_BASE=${2%.toml}
+FIRST_ARG=${1:-}
+SECOND_ARG=${2:-}
+THIRD_ARG=${3:-}
+SCRIPT_BASE=${FIRST_ARG%.jl}
+PROFILE_BASE=${SECOND_ARG%.toml}
+
+if [ "$SCRIPT_BASE" = "nbodysim" ]; then
+    SCRIPT_BASE=${SECOND_ARG:-}
+    PROFILE_BASE=${THIRD_ARG%.toml}
+fi
 
 # Validate that the Julia script argument was provided
 if [ -z "$SCRIPT_BASE" ]; then
-    echo "Error: You must provide a Julia script name."
-    echo "Usage: sbatch $0 <script_name> [profile_name]"
+    echo "Error: You must provide a model or Julia script name."
+    echo "Usage: sbatch $0 <direct|barneshut|fmm|script_name> [profile_name]"
     exit 1
 fi
 
 # Fallback to 'planetary' if no profile is provided
 PROFILE_BASE=${PROFILE_BASE:-planetary}
 
-# Automatically construct the full paths with extensions
-JULIA_SCRIPT="src/${SCRIPT_BASE}.jl"
-PROFILE="profiles/${PROFILE_BASE}.toml"
+# Use the front-end wrapper when a solver model is chosen directly.
+if [ "$SCRIPT_BASE" = "direct" ] || [ "$SCRIPT_BASE" = "barneshut" ] || [ "$SCRIPT_BASE" = "fmm" ]; then
+    JULIA_SCRIPT="src/nbodysim.jl"
+    PROFILE="profiles/${PROFILE_BASE}.toml"
+    JULIA_ARGS=("$JULIA_SCRIPT" "$SCRIPT_BASE" "$PROFILE")
+else
+    # Automatically construct the full paths with extensions for direct solver entry points.
+    JULIA_SCRIPT="src/${SCRIPT_BASE}.jl"
+    PROFILE="profiles/${PROFILE_BASE}.toml"
+    JULIA_ARGS=("$JULIA_SCRIPT" "$PROFILE")
+fi
 
 # Clear previous modules and load Julia 1.11.3
 module purge
@@ -36,7 +52,7 @@ export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # Launch one Julia process per allocated MPI task and connect all tasks to one MPI world.
 srun --mpi=pmi2 --ntasks="$SLURM_NTASKS" --ntasks-per-node=1 \
-    julia --project=~/Julia/NBodySim/ -t "$SLURM_CPUS_PER_TASK" "$JULIA_SCRIPT" "$PROFILE"
+    julia --project=~/Julia/NBodySim/ -t "$SLURM_CPUS_PER_TASK" "${JULIA_ARGS[@]}"
 
 
 # LOG ORGANIZATION

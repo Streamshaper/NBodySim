@@ -1,5 +1,6 @@
 using LinearAlgebra
 
+# Conserved quantities used to measure drift.
 struct VerificationReference
     total_mass::Float64
     center_of_mass::Vector{Float64}
@@ -10,6 +11,7 @@ struct VerificationReference
     velocity_scale::Float64
 end
 
+# Total kinetic + potential energy for the verification budget.
 function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
                               interaction_strength::Float64, smoothing::Float64,
                               max_particles::Int)
@@ -29,6 +31,7 @@ function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
     return kinetic + potential
 end
 
+# Baseline invariants for COM, momentum, angular momentum, and energy.
 function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
                                interaction_strength::Float64, smoothing::Float64,
                                max_energy_particles::Int)
@@ -44,6 +47,7 @@ function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, mass
                                  energy, position_scale, velocity_scale)
 end
 
+# Drift from the reference conserved quantities.
 function verification_metrics(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
                               interaction_strength::Float64, smoothing::Float64,
                               reference::VerificationReference, max_energy_particles::Int)
