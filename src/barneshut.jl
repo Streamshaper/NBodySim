@@ -87,7 +87,7 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
         py = pos[2, i]
         pz = pos[3, i]
         
-        acc_x, acc_y, acc_z = net_acc(px, py, pz, masses[i], tree, tree,
+        acc_x, acc_y, acc_z = net_acc(px, py, pz, tree, tree,
                                       profile.barnes_hut_opening_angle, masses,
                                       profile.interaction_strength, profile.smoothing)
         
