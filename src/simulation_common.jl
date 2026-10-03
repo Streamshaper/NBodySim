@@ -3,9 +3,11 @@ include(joinpath(@__DIR__, "verification.jl"))
 include(joinpath(@__DIR__, "video_encoding.jl"))
 include(joinpath(@__DIR__, "data_storage.jl"))
 
-function grav_acc(mass::Float64, r::Vector{Float64}, interaction_strength::Float64, smoothing::Float64)
-    d2 = sum(r.^2) + smoothing^2
-    return ((interaction_strength * mass) / (d2^(1.5))) .* r
+function grav_acc(mass::Float64, dx::Float64, dy::Float64, dz::Float64,
+                  interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
+    d2 = dx^2 + dy^2 + dz^2 + smoothing^2
+    scale = (interaction_strength * mass) / (d2^1.5)
+    return (scale * dx, scale * dy, scale * dz)
 end
 
 function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)

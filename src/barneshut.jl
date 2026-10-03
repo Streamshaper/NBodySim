@@ -32,12 +32,18 @@ function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node
 
             # Skip self-interaction
             if sum(r_vec.^2) > 1e-12
-                acc .+= grav_acc(all_masses[idx_orig], r_vec, interaction_strength, smoothing)
+                grav_x, grav_y, grav_z = grav_acc(all_masses[idx_orig],
+                                                    r_vec[1], r_vec[2], r_vec[3],
+                                                    interaction_strength, smoothing)
+                acc[1] += grav_x
+                acc[2] += grav_y
+                acc[3] += grav_z
             end
         end
         return acc
     elseif s / √(sum(r.^2)) < θ
-        return grav_acc(getmass(node), r, interaction_strength, smoothing)
+        return collect(grav_acc(getmass(node), r[1], r[2], r[3],
+                                interaction_strength, smoothing))
     else
         return sum(net_acc(pos, vel, mass, child, tree, θ, all_masses,
                            interaction_strength, smoothing) for child in children(node))

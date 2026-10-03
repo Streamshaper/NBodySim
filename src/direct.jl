@@ -12,32 +12,54 @@ end
 
 # O(N^2) pairwise force sum for one particle.
 function net_acc_direct(pos::Matrix{Float64}, p_idx::Int, masses::Vector{Float64},
-                        interaction_strength::Float64, smoothing::Float64)
-    acc = zeros(3)
-    pos_i = pos[:, p_idx]
-    
+                        interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
+    acc_x = acc_y = acc_z = 0.0
+    px = pos[1, p_idx]
+    py = pos[2, p_idx]
+    pz = pos[3, p_idx]
+
     for j in axes(pos, 2)
         if j != p_idx
-            r_vec = pos[:, j] .- pos_i
-            acc .+= grav_acc(masses[j], r_vec, interaction_strength, smoothing)
+            dx = pos[1, j] - px
+            dy = pos[2, j] - py
+            dz = pos[3, j] - pz
+            grav_x, grav_y, grav_z = grav_acc(masses[j], dx, dy, dz,
+                                               interaction_strength, smoothing)
+            acc_x += grav_x
+            acc_y += grav_y
+            acc_z += grav_z
         end
     end
-    
-    return acc
+
+    return (acc_x, acc_y, acc_z)
 end
 
 # Advance local particles, then reduce the global state.
 function simulation_step_direct_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                              profile, comm, rank::Int, n_ranks::Int)
-    local_pos = zeros(size(pos))
-    local_vel = zeros(size(vel))
+                              profile, comm, rank::Int, n_ranks::Int,
+                              local_pos::Matrix{Float64}, local_vel::Matrix{Float64})
+
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
+    fill!(local_pos, 0.0)
+    fill!(local_vel, 0.0)
 
     # Calculate all forces first (Thread-safe)
     Threads.@threads for i in local_range
-        acc = net_acc_direct(pos, i, masses, profile.interaction_strength, profile.smoothing)
-        local_vel[:, i] .= vel[:, i] .+ acc .* profile.timestep
-        local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* profile.timestep
+        px = pos[1, i]
+        py = pos[2, i]
+        pz = pos[3, i]
+        acc_x, acc_y, acc_z = net_acc_direct(pos, i, masses,
+                                             profile.interaction_strength, profile.smoothing)
+
+        vx = vel[1, i] + acc_x * profile.timestep
+        vy = vel[2, i] + acc_y * profile.timestep
+        vz = vel[3, i] + acc_z * profile.timestep
+        local_vel[1, i] = vx
+        local_vel[2, i] = vy
+        local_vel[3, i] = vz
+        local_pos[1, i] = px + vx * profile.timestep
+        local_pos[2, i] = py + vy * profile.timestep
+        local_pos[3, i] = pz + vz * profile.timestep
     end
 
     # Aggregate back across MPI ranks
@@ -91,9 +113,13 @@ function run_direct_simulation(profile_path::AbstractString="profiles/default.to
 
     log_interval = max(1, num_steps ÷ 10)
 
+    local_pos_buffer = zeros(3, num_particles)
+    local_vel_buffer = zeros(3, num_particles)
+
     simulation_time = @elapsed begin
         for step in 1:num_steps
-            simulation_step_direct_mpi!(pos, vel, masses, profile, comm, rank, n_ranks)
+            simulation_step_direct_mpi!(pos, vel, masses, profile, comm, rank, n_ranks,
+                                        local_pos_buffer, local_vel_buffer)
 
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
