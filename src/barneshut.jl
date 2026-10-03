@@ -15,79 +15,145 @@ getmass(node::SpatialTree) = getcontext(node)[:mass]
 getcom(node::SpatialTree)  = getcontext(node)[:com]
 
 # Barnes-Hut acceleration: exact for near leaves, approximate for far cells.
-function net_acc(pos::Vector{Float64}, vel::Vector{Float64}, mass::Float64, node::SpatialTree,
+function net_acc(px::Float64, py::Float64, pz::Float64, node::SpatialTree,
                  tree::SpatialTree, θ::Float64, all_masses::Vector{Float64},
-                 interaction_strength::Float64, smoothing::Float64)
+                 interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
+    
     s = sidelength(node)
-    r = getcom(node) .- pos
+    com = getcom(node) # AHRB returns a Vector{Float64} here
+    
+    rx = com[1] - px
+    ry = com[2] - py
+    rz = com[3] - pz
+    dist_sq = rx^2 + ry^2 + rz^2
 
     if isleaf(node)
         pp  = points(node)
         idx = range(node)
-        acc = zeros(3)
+        
+        acc_x = acc_y = acc_z = 0.0
 
         for i in axes(pp, 2)
             idx_orig = tree.info.perm[idx[i]]
-            r_vec = pp[:, i] .- pos
+            
+            dx = pp[1, i] - px
+            dy = pp[2, i] - py
+            dz = pp[3, i] - pz
+            d_sq = dx^2 + dy^2 + dz^2
 
             # Skip self-interaction
-            if sum(r_vec.^2) > 1e-12
-                grav_x, grav_y, grav_z = grav_acc(all_masses[idx_orig],
-                                                    r_vec[1], r_vec[2], r_vec[3],
-                                                    interaction_strength, smoothing)
-                acc[1] += grav_x
-                acc[2] += grav_y
-                acc[3] += grav_z
+            if d_sq > 1e-12
+                grav_x, grav_y, grav_z = grav_acc(all_masses[idx_orig], dx, dy, dz,
+                                                  interaction_strength, smoothing)
+                acc_x += grav_x
+                acc_y += grav_y
+                acc_z += grav_z
             end
         end
-        return acc
-    elseif s / √(sum(r.^2)) < θ
-        return collect(grav_acc(getmass(node), r[1], r[2], r[3],
-                                interaction_strength, smoothing))
+        return (acc_x, acc_y, acc_z)
+        
+    elseif s / sqrt(dist_sq) < θ
+        return grav_acc(getmass(node), rx, ry, rz, interaction_strength, smoothing)
+        
     else
-        return sum(net_acc(pos, vel, mass, child, tree, θ, all_masses,
-                           interaction_strength, smoothing) for child in children(node))
+        acc_x = acc_y = acc_z = 0.0
+        
+        for child in children(node)
+            cx, cy, cz = net_acc(px, py, pz, child, tree, θ, all_masses,
+                                 interaction_strength, smoothing)
+            acc_x += cx
+            acc_y += cy
+            acc_z += cz
+        end
+        
+        return (acc_x, acc_y, acc_z)
     end
 end
 
 function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                             tree::SpatialTree, profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
-    local_pos = zeros(size(pos))
-    local_vel = zeros(size(vel))
+                                        tree::SpatialTree, profile::SimulationProfile, comm, rank::Int, n_ranks::Int,
+                                        local_pos::Matrix{Float64}, local_vel::Matrix{Float64})
+    
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
 
-    Threads.@threads for i in local_range
-        acc = net_acc(pos[:, i], vel[:, i], masses[i], tree, tree,
-                  profile.barnes_hut_opening_angle, masses,
-                  profile.interaction_strength, profile.smoothing)
-        local_vel[:, i] .= vel[:, i] .+ acc .* profile.timestep
-        local_pos[:, i] .= pos[:, i] .+ local_vel[:, i] .* profile.timestep
+    fill!(local_pos, 0.0)
+    fill!(local_vel, 0.0)
+
+    Threads.@threads :dynamic for idx in local_range
+        # Maximum Cache Efficiency: Use AHRB's spatial mapping
+        i = tree.info.perm[idx]
+        
+        px = pos[1, i]
+        py = pos[2, i]
+        pz = pos[3, i]
+        
+        acc_x, acc_y, acc_z = net_acc(px, py, pz, masses[i], tree, tree,
+                                      profile.barnes_hut_opening_angle, masses,
+                                      profile.interaction_strength, profile.smoothing)
+        
+        vx = vel[1, i] + acc_x * profile.timestep
+        vy = vel[2, i] + acc_y * profile.timestep
+        vz = vel[3, i] + acc_z * profile.timestep
+        
+        local_vel[1, i] = vx
+        local_vel[2, i] = vy
+        local_vel[3, i] = vz
+        
+        local_pos[1, i] = px + vx * profile.timestep
+        local_pos[2, i] = py + vy * profile.timestep
+        local_pos[3, i] = pz + vz * profile.timestep
     end
 
     MPI.Allreduce!(local_pos, pos, +, comm)
     MPI.Allreduce!(local_vel, vel, +, comm)
 end
 
-# Refresh aggregate mass and center of mass for each tree node.
+# Refresh aggregate mass and center of mass for each tree node without intermediate allocations.
 function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
     foreach(PostOrderDFS(tree)) do node
         if isleaf(node)
-            particle_indices = tree.info.perm[range(node)]
-            node_mass = sum(@view masses[particle_indices])
-            node_points = points(node)
-            center_of_mass = node_mass > 0 ?
-                (node_points * masses[particle_indices]) ./ node_mass : zeros(3)
-            setcontext!(node, (; com = center_of_mass, mass = node_mass))
+            idx_range = range(node)
+            node_mass = 0.0
+            cx = cy = cz = 0.0
+            
+            np = points(node)
+            # Allocation-free manual loop
+            for i in axes(np, 2)
+                idx_orig = tree.info.perm[idx_range[i]]
+                m = masses[idx_orig]
+                
+                node_mass += m
+                cx += np[1, i] * m
+                cy += np[2, i] * m
+                cz += np[3, i] * m
+            end
+            
+            if node_mass > 0
+                cx /= node_mass
+                cy /= node_mass
+                cz /= node_mass
+            end
+            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass))
         else
-            weighted_com = zeros(3)
+            cx = cy = cz = 0.0
             node_mass = 0.0
             for child in children(node)
-                child_context = getcontext(child)
-                weighted_com .+= child_context[:com] .* child_context[:mass]
-                node_mass += child_context[:mass]
+                ctx = getcontext(child)
+                ccom = ctx[:com]
+                cmass = ctx[:mass]
+                
+                cx += ccom[1] * cmass
+                cy += ccom[2] * cmass
+                cz += ccom[3] * cmass
+                node_mass += cmass
             end
-            center_of_mass = weighted_com ./ (node_mass > 0 ? node_mass : 1.0)
-            setcontext!(node, (; com = center_of_mass, mass = node_mass))
+            
+            if node_mass > 0
+                cx /= node_mass
+                cy /= node_mass
+                cz /= node_mass
+            end
+            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass))
         end
     end
 end
@@ -138,12 +204,15 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
 
     log_interval = max(1, num_steps ÷ 10)
 
+    local_pos_buffer = zeros(3, num_particles)
+    local_vel_buffer = zeros(3, num_particles)
+
     simulation_time = @elapsed begin
         for step in 1:num_steps
             tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
 
             update_mass_com!(tree, masses)
-            simulation_step_barneshut_mpi!(pos, vel, masses, tree, profile, comm, rank, n_ranks)
+            simulation_step_barneshut_mpi!(pos, vel, masses, tree, profile, comm, rank, n_ranks, local_pos_buffer, local_vel_buffer)
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
                     push!(frames, copy(pos))
