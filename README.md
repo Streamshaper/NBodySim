@@ -146,8 +146,9 @@ Upon completion, the simulation generates the following artifacts:
 
 * **Video Animation (`output/`)**: If `simulation.video_encoding_enabled` is set to `true`, a dual-angle 3D MP4 animation is exported.
 
+* **Stopwatch Log (`logs/stopwatch.csv`)**: If `simulation.logging_enabled` is set to `true`, simulation and video-encoding timings are appended independently of whether video encoding is enabled. When video encoding is disabled, the encoding time is recorded as `0.00`.
 
-* **Verification Logs (`logs/verification_*.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change.
+* **Verification Logs (`logs/YYYY-MM-DD/verification_*.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change. Verification CSVs are stored in the same date-stamped directory used to archive SLURM job logs.
 
 
 

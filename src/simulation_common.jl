@@ -1,5 +1,6 @@
 include(joinpath(@__DIR__, "profile.jl"))
 include(joinpath(@__DIR__, "verification.jl"))
+include(joinpath(@__DIR__, "logging.jl"))
 include(joinpath(@__DIR__, "video_encoding.jl"))
 include(joinpath(@__DIR__, "data_storage.jl"))
 

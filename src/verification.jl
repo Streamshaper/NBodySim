@@ -1,4 +1,5 @@
 using LinearAlgebra
+using Dates
 
 # Conserved quantities used to measure drift.
 struct VerificationReference
@@ -77,4 +78,10 @@ function write_verification_row(io, step::Int, time::Float64, metrics)
     println(io, join((step, time, metrics.energy, metrics.relative_energy_change,
                       metrics.center_of_mass_drift, metrics.relative_momentum_change,
                       metrics.relative_angular_momentum_change), ','))
+end
+
+function verification_log_path(model::String, num_particles::Int, num_steps::Int)
+    date_directory = Dates.format(Dates.today(), dateformat"yyyy-mm-dd")
+    filename = "verification_$(model)_$(num_particles)p_$(num_steps)s.csv"
+    return joinpath("logs", date_directory, filename)
 end

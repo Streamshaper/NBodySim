@@ -242,7 +242,7 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
     if rank == 0
         println("Total simulation time: $simulation_time seconds")
         if profile.verification_enabled
-            verification_file = joinpath("logs", "verification_barnes_hut_$(num_particles)p_$(num_steps)s.csv")
+            verification_file = verification_log_path("barnes_hut", num_particles, num_steps)
             mkpath(dirname(verification_file))
             open(verification_file, "w") do io
                 write_verification_header(io)
@@ -260,8 +260,14 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
         flush(stdout)
     end
 
+    encoding_time = 0.0
     if rank == 0 && profile.video_encoding_enabled
-        encode_video_and_log(frames, masses, num_particles, num_steps, round(Int, profile.fps), simulation_time, "B_H", "barneshut")
+        encoding_time = encode_video(frames, masses, num_particles, num_steps,
+                                     round(Int, profile.fps), "barneshut")
+    end
+
+    if rank == 0 && profile.logging_enabled
+        write_log("B_H", num_particles, num_steps, simulation_time, encoding_time)
     end
 
     if rank == 0 && profile.store_data

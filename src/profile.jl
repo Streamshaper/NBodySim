@@ -21,6 +21,7 @@ struct SimulationProfile
     verification_enabled::Bool
     verification_energy_max_particles::Int
     video_encoding_enabled::Bool
+    logging_enabled::Bool
     store_data::Bool
     fps::Float64
     positions::Matrix{Float64}
@@ -137,6 +138,7 @@ function load_profile(path::AbstractString)
     verification_enabled = Bool(get(simulation, "verification_enabled", true))
     verification_energy_max_particles = Int(get(simulation, "verification_energy_max_particles", 2000))
     video_encoding_enabled = Bool(get(simulation, "video_encoding_enabled", true))
+    logging_enabled = Bool(get(simulation, "logging_enabled", false))
     store_data = Bool(get(simulation, "store_data", true))
     fps = Float64(get(simulation, "fps", 1.0))
 
@@ -171,7 +173,8 @@ function load_profile(path::AbstractString)
     return SimulationProfile(interaction_strength, smoothing, particle_radius, opening_angle,
                              FMMProfile(expansion_order, multipole_acceptance, leaf_size),
                              timestep, num_steps, verification_enabled,
-                             verification_energy_max_particles, video_encoding_enabled, 
+                             verification_energy_max_particles, video_encoding_enabled,
+                             logging_enabled,
                              store_data, fps,
                              positions, velocities, masses)
 end

@@ -1,11 +1,9 @@
 # video_encoding.jl
 using CairoMakie
-using Printf
 
 # Render the saved positions as a 3D animation and record timing metadata for benchmarking.
-function encode_video_and_log(frames::Vector{Matrix{Float64}}, masses::Vector{Float64}, 
-                              num_particles::Int, num_steps::Int, fps::Real, 
-                              simulation_time::Float64, algorithm_type::String, file_prefix::String)
+function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
+                      num_particles::Int, num_steps::Int, fps::Real, file_prefix::String)
     # Output path setup.
     out_dir = "output"
     mkpath(out_dir)
@@ -13,7 +11,7 @@ function encode_video_and_log(frames::Vector{Matrix{Float64}}, masses::Vector{Fl
     video_filename = "$(file_prefix)-animation_$(num_particles)p_$(num_steps)s.mp4"
     out_file = joinpath(out_dir, video_filename)
 
-    println("Setting up CairoMakie animation for $algorithm_type...")
+    println("Setting up CairoMakie animation for $file_prefix...")
     flush(stdout)
 
     fig = Figure(size = (1600, 800), backgroundcolor = :black, figure_padding = 0)
@@ -91,19 +89,5 @@ function encode_video_and_log(frames::Vector{Matrix{Float64}}, masses::Vector{Fl
     println("Saved $out_file successfully!")
     flush(stdout)
 
-    # Keep a lightweight benchmark summary for later comparison.
-    stopwatch_file = joinpath("logs", "stopwatch.csv")
-    mkpath(dirname(stopwatch_file))
-    core_count = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", string(Sys.CPU_THREADS)))
-    node_count = parse(Int, get(ENV, "SLURM_JOB_NUM_NODES", "1"))
-
-    open(stopwatch_file, "a+") do io
-        if filesize(stopwatch_file) == 0
-            println(io, "type,node_count,core_count,particle_count,steps,simulation_time,encoding_time")
-        end
-        simulation_time_string = @sprintf("%.2f", simulation_time)
-        encoding_time_string = @sprintf("%.2f", video_encoding_time)
-
-        println(io, "$algorithm_type,$node_count,$core_count,$num_particles,$num_steps,$simulation_time_string,$encoding_time_string")
-    end
+    return video_encoding_time
 end

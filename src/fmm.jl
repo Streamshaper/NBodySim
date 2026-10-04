@@ -233,7 +233,7 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
     if rank == 0
         println("Total simulation time: $simulation_time seconds")
         if profile.verification_enabled
-            verification_file = joinpath("logs", "verification_fmm_$(num_particles)p_$(num_steps)s.csv")
+            verification_file = verification_log_path("fmm", num_particles, num_steps)
             mkpath(dirname(verification_file))
             open(verification_file, "w") do io
                 write_verification_header(io)
@@ -251,8 +251,14 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
         flush(stdout)
     end
 
+    encoding_time = 0.0
     if rank == 0 && profile.video_encoding_enabled
-        encode_video_and_log(frames, masses, num_particles, num_steps, round(Int, profile.fps), simulation_time, "FMM", "fmm")
+        encoding_time = encode_video(frames, masses, num_particles, num_steps,
+                                     round(Int, profile.fps), "fmm")
+    end
+
+    if rank == 0 && profile.logging_enabled
+        write_log("FMM", num_particles, num_steps, simulation_time, encoding_time)
     end
 
     if rank == 0 && profile.store_data

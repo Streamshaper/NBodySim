@@ -8,6 +8,7 @@ verification_enabled = true
 verification_energy_max_particles = 2000
 store_data = true
 video_encoding_enabled = true
+logging_enabled = true
 fps = 1.0
 
 [barnes_hut]
