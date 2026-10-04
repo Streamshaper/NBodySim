@@ -12,7 +12,7 @@ end
 
 # O(N^2) pairwise force sum for one particle.
 function net_acc_direct(pos::Matrix{Float64}, p_idx::Int, masses::Vector{Float64},
-                        interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
+                        kernel::AbstractKernel)::NTuple{3, Float64}
     acc_x = acc_y = acc_z = 0.0
     px = pos[1, p_idx]
     py = pos[2, p_idx]
@@ -23,11 +23,10 @@ function net_acc_direct(pos::Matrix{Float64}, p_idx::Int, masses::Vector{Float64
             dx = pos[1, j] - px
             dy = pos[2, j] - py
             dz = pos[3, j] - pz
-            grav_x, grav_y, grav_z = grav_acc(masses[j], dx, dy, dz,
-                                               interaction_strength, smoothing)
-            acc_x += grav_x
-            acc_y += grav_y
-            acc_z += grav_z
+            ax, ay, az = kernel_acceleration(kernel, masses[j], dx, dy, dz)
+            acc_x += ax
+            acc_y += ay
+            acc_z += az
         end
     end
 
@@ -45,21 +44,11 @@ function simulation_step_direct_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64},
 
     # Calculate all forces first (Thread-safe)
     Threads.@threads for i in local_range
-        px = pos[1, i]
-        py = pos[2, i]
-        pz = pos[3, i]
         acc_x, acc_y, acc_z = net_acc_direct(pos, i, masses,
-                                             profile.interaction_strength, profile.smoothing)
+                                             profile.kernel)
 
-        vx = vel[1, i] + acc_x * profile.timestep
-        vy = vel[2, i] + acc_y * profile.timestep
-        vz = vel[3, i] + acc_z * profile.timestep
-        local_vel[1, i] = vx
-        local_vel[2, i] = vy
-        local_vel[3, i] = vz
-        local_pos[1, i] = px + vx * profile.timestep
-        local_pos[2, i] = py + vy * profile.timestep
-        local_pos[3, i] = pz + vz * profile.timestep
+        integrate_particle!(profile.integrator, local_pos, local_vel, pos, vel, i,
+                            (acc_x, acc_y, acc_z), profile.timestep)
     end
 
     # Aggregate back across MPI ranks
@@ -69,6 +58,10 @@ end
 
 function run_direct_simulation(profile_path::AbstractString="profiles/default.toml",
                               num_steps_override::Union{Nothing,Int}=nothing)
+    profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
+    profile = load_profile(profile_file)
+    require_solver_support(DirectSolver(), profile.kernel, profile.integrator)
+
     MPI.Init()
     comm = MPI.COMM_WORLD
     rank = MPI.Comm_rank(comm)
@@ -76,19 +69,16 @@ function run_direct_simulation(profile_path::AbstractString="profiles/default.to
 
     frames = Vector{Matrix{Float64}}()
     vel_frames = Vector{Matrix{Float64}}()
-    profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
-    profile = load_profile(profile_file)
     num_particles = size(profile.positions, 2)
     num_steps = num_steps_override === nothing ? profile.num_steps : Int(num_steps_override)
 
     verification_baseline = profile.verification_enabled ?
         verification_reference(profile.positions, profile.velocities, profile.masses,
-                               profile.interaction_strength, profile.smoothing,
+                               profile.kernel,
                                profile.verification_energy_max_particles) : nothing
     verification_rows = rank == 0 && profile.verification_enabled ?
         [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
-                                        profile.masses, profile.interaction_strength,
-                                        profile.smoothing, verification_baseline,
+                                        profile.masses, profile.kernel, verification_baseline,
                                         profile.verification_energy_max_particles))] : nothing
 
     pos, vel, masses = rank == 0 ? (copy(profile.positions), copy(profile.velocities), copy(profile.masses)) :
@@ -133,8 +123,7 @@ function run_direct_simulation(profile_path::AbstractString="profiles/default.to
                 if step % log_interval == 0 || step == num_steps
                     push!(verification_rows, (step, step * profile.timestep,
                                               verification_metrics(pos, vel, masses,
-                                                                   profile.interaction_strength,
-                                                                   profile.smoothing, verification_baseline,
+                                                                   profile.kernel, verification_baseline,
                                                                    profile.verification_energy_max_particles)))
                 end
             end
@@ -175,7 +164,8 @@ function run_direct_simulation(profile_path::AbstractString="profiles/default.to
     end
 
     if rank == 0 && profile.logging_enabled
-        write_log("Direct", num_particles, num_steps, simulation_time, encoding_time)
+        write_log(DirectSolver(), profile.kernel, profile.integrator,
+                  num_particles, num_steps, simulation_time, encoding_time)
     end
 
     if rank == 0 && profile.store_data

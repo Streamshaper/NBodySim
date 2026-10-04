@@ -6,9 +6,7 @@ include(joinpath(@__DIR__, "data_storage.jl"))
 
 function grav_acc(mass::Float64, dx::Float64, dy::Float64, dz::Float64,
                   interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
-    d2 = dx^2 + dy^2 + dz^2 + smoothing^2
-    scale = (interaction_strength * mass) / (d2^1.5)
-    return (scale * dx, scale * dy, scale * dz)
+    return kernel_acceleration(PlummerGravity(interaction_strength, smoothing), mass, dx, dy, dz)
 end
 
 function mpi_local_range(n_particles::Int, rank::Int, n_ranks::Int)

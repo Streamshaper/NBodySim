@@ -116,14 +116,13 @@ function simulation_step_fmm_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, ma
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
 
-        # Explicitly unroll the 3D update to guarantee zero allocations
-        @inbounds for d in 1:3
-            # Index directly into the potential matrix
-            acc = target_system.potential[4 + d, local_index]
-
-            local_vel[d, global_index] = vel[d, global_index] + acc * profile.timestep
-            local_pos[d, global_index] = pos[d, global_index] + local_vel[d, global_index] * profile.timestep
-        end
+        acceleration = @inbounds (
+            target_system.potential[5, local_index],
+            target_system.potential[6, local_index],
+            target_system.potential[7, local_index],
+        )
+        integrate_particle!(profile.integrator, local_pos, local_vel, pos, vel,
+                            global_index, acceleration, profile.timestep)
     end
 
     MPI.Allreduce!(local_pos, pos, +, comm)
@@ -132,6 +131,10 @@ end
 
 function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml",
                            num_steps_override::Union{Nothing,Int}=nothing)
+    profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
+    profile = load_profile(profile_file)
+    require_solver_support(FMMSolver(), profile.kernel, profile.integrator)
+
     MPI.Init()
     comm = MPI.COMM_WORLD
     rank = MPI.Comm_rank(comm)
@@ -147,18 +150,15 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
 
     frames = Vector{Matrix{Float64}}()
     vel_frames = Vector{Matrix{Float64}}()
-    profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
-    profile = load_profile(profile_file)
     num_particles = size(profile.positions, 2)
     num_steps = num_steps_override === nothing ? profile.num_steps : Int(num_steps_override)
     verification_baseline = profile.verification_enabled ?
         verification_reference(profile.positions, profile.velocities, profile.masses,
-                               profile.interaction_strength, profile.smoothing,
+                               profile.kernel,
                                profile.verification_energy_max_particles) : nothing
     verification_rows = rank == 0 && profile.verification_enabled ?
         [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
-                                        profile.masses, profile.interaction_strength,
-                                        profile.smoothing, verification_baseline,
+                                        profile.masses, profile.kernel, verification_baseline,
                                         profile.verification_energy_max_particles))] : nothing
 
     pos, vel, masses = rank == 0 ? (copy(profile.positions), copy(profile.velocities), copy(profile.masses)) :
@@ -216,8 +216,7 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
                 if step % log_interval == 0 || step == num_steps
                     push!(verification_rows, (step, step * profile.timestep,
                                               verification_metrics(pos, vel, masses,
-                                                                   profile.interaction_strength,
-                                                                   profile.smoothing, verification_baseline,
+                                                                   profile.kernel, verification_baseline,
                                                                    profile.verification_energy_max_particles)))
                 end
             end
@@ -258,7 +257,8 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
     end
 
     if rank == 0 && profile.logging_enabled
-        write_log("FMM", num_particles, num_steps, simulation_time, encoding_time)
+        write_log(FMMSolver(), profile.kernel, profile.integrator,
+                  num_particles, num_steps, simulation_time, encoding_time)
     end
 
     if rank == 0 && profile.store_data

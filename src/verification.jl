@@ -14,7 +14,7 @@ end
 
 # Total kinetic + potential energy for the verification budget.
 function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                              interaction_strength::Float64, smoothing::Float64,
+                              kernel::AbstractKernel,
                               max_particles::Int)
     n_particles = size(pos, 2)
     n_particles <= max_particles || return NaN
@@ -24,9 +24,10 @@ function _verification_energy(pos::Matrix{Float64}, vel::Matrix{Float64}, masses
     for i in 1:n_particles
         kinetic += 0.5 * masses[i] * sum(abs2, @view vel[:, i])
         for j in 1:(i - 1)
-            displacement = pos[:, i] - pos[:, j]
-            potential -= interaction_strength * masses[i] * masses[j] /
-                         sqrt(sum(abs2, displacement) + smoothing^2)
+            dx = pos[1, i] - pos[1, j]
+            dy = pos[2, i] - pos[2, j]
+            dz = pos[3, i] - pos[3, j]
+            potential += pair_potential(kernel, masses[i], masses[j], dx, dy, dz)
         end
     end
     return kinetic + potential
@@ -34,7 +35,7 @@ end
 
 # Baseline invariants for COM, momentum, angular momentum, and energy.
 function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                               interaction_strength::Float64, smoothing::Float64,
+                               kernel::AbstractKernel,
                                max_energy_particles::Int)
     total_mass = sum(masses)
     center_of_mass = vec(pos * masses) ./ total_mass
@@ -42,7 +43,7 @@ function verification_reference(pos::Matrix{Float64}, vel::Matrix{Float64}, mass
     angular_momentum = vec(sum(cross(pos[:, i], masses[i] .* vel[:, i]) for i in axes(pos, 2)))
     position_scale = max(maximum(norm.(eachcol(pos))), 1.0)
     velocity_scale = max(maximum(norm.(eachcol(vel))), 1.0)
-    energy = _verification_energy(pos, vel, masses, interaction_strength, smoothing,
+    energy = _verification_energy(pos, vel, masses, kernel,
                                   max_energy_particles)
     return VerificationReference(total_mass, center_of_mass, momentum, angular_momentum,
                                  energy, position_scale, velocity_scale)
@@ -50,12 +51,12 @@ end
 
 # Drift from the reference conserved quantities.
 function verification_metrics(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                              interaction_strength::Float64, smoothing::Float64,
+                              kernel::AbstractKernel,
                               reference::VerificationReference, max_energy_particles::Int)
     center_of_mass = vec(pos * masses) ./ reference.total_mass
     momentum = vec(vel * masses)
     angular_momentum = vec(sum(cross(pos[:, i], masses[i] .* vel[:, i]) for i in axes(pos, 2)))
-    energy = _verification_energy(pos, vel, masses, interaction_strength, smoothing,
+    energy = _verification_energy(pos, vel, masses, kernel,
                                   max_energy_particles)
 
     return (

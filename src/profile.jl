@@ -1,6 +1,21 @@
 using TOML
 using Random
 
+if !@isdefined __NBodySimKernelsLoaded
+    include(joinpath(@__DIR__, "kernels.jl"))
+    global __NBodySimKernelsLoaded = true
+end
+
+if !@isdefined __NBodySimIntegratorsLoaded
+    include(joinpath(@__DIR__, "integrators.jl"))
+    global __NBodySimIntegratorsLoaded = true
+end
+
+if !@isdefined __NBodySimSolversLoaded
+    include(joinpath(@__DIR__, "solvers.jl"))
+    global __NBodySimSolversLoaded = true
+end
+
 # Particle-state file tag.
 const PARTICLE_STATE_MAGIC = UInt8[0x4e, 0x42, 0x53, 0x31]
 
@@ -10,7 +25,10 @@ struct FMMProfile
     leaf_size::Int
 end
 
-struct SimulationProfile
+struct SimulationProfile{K<:AbstractKernel, I<:AbstractIntegrator, S<:AbstractSolver}
+    kernel::K
+    integrator::I
+    solver::S
     interaction_strength::Float64
     smoothing::Float64
     particle_radius::Float64
@@ -44,7 +62,7 @@ function _particle_matrix(value, name)
 end
 
 # Generate a central-mass system with orbiting satellites.
-function _generated_particles(particles, interaction_strength)
+function _generated_particles(particles, kernel::AbstractKernel)
     count = Int(_required(particles, "count", "particles"))
     count > 1 || error("Profile particle count must be at least 2 for a central body system")
     seed = Int(get(particles, "seed", 1))
@@ -76,7 +94,7 @@ function _generated_particles(particles, interaction_strength)
                                 (2rand(rng) - 1) * z_half_width)
         
         # Calculate speed based on the central mass for a stable Keplerian orbit
-        speed = sqrt(interaction_strength * central_mass / radius)
+        speed = circular_orbital_speed(kernel, central_mass, radius)
         velocities[:, index] .= (-speed * sin(angle), speed * cos(angle), 0.0)
     end
     
@@ -122,12 +140,20 @@ end
 function load_profile(path::AbstractString)
     data = TOML.parsefile(path)
     simulation = get(data, "simulation", Dict{String, Any}())
+    kernel_config = get(data, "kernel", Dict{String, Any}())
+    integrator_config = get(data, "integrator", Dict{String, Any}())
+    solver_config = get(data, "solver", Dict{String, Any}())
     barnes_hut = get(data, "barnes_hut", Dict{String, Any}())
     fmm = get(data, "fmm", Dict{String, Any}())
     particles = get(data, "particles", Dict{String, Any}())
-    interaction_strength = Float64(get(simulation, "interaction_strength",
-                                      get(simulation, "gravitational_constant", 6.67430e-11)))
-    smoothing = Float64(get(simulation, "smoothing", 100.0))
+    legacy_strength = get(simulation, "interaction_strength",
+                          get(simulation, "gravitational_constant", 6.67430e-11))
+    interaction_strength = Float64(get(kernel_config, "interaction_strength",
+                                      get(kernel_config, "strength", legacy_strength)))
+    smoothing = Float64(get(kernel_config, "smoothing", get(simulation, "smoothing", 100.0)))
+    kernel_type = lowercase(String(get(kernel_config, "type", "plummer_gravity")))
+    integrator_type = lowercase(String(get(integrator_config, "type", "semi_implicit_euler")))
+    solver = parse_solver(String(get(solver_config, "type", "direct")))
     particle_radius = Float64(get(simulation, "particle_radius", 0.0))
     opening_angle = Float64(get(barnes_hut, "opening_angle", get(simulation, "opening_angle", 0.5)))
     expansion_order = Int(get(fmm, "expansion_order", 5))
@@ -142,8 +168,8 @@ function load_profile(path::AbstractString)
     store_data = Bool(get(simulation, "store_data", true))
     fps = Float64(get(simulation, "fps", 1.0))
 
-    interaction_strength > 0 || error("Profile interaction_strength must be positive")
-    smoothing >= 0 || error("Profile smoothing must be non-negative")
+    interaction_strength > 0 || error("Kernel interaction_strength must be positive")
+    smoothing >= 0 || error("Kernel smoothing must be non-negative")
     particle_radius >= 0 || error("Profile particle_radius must be non-negative")
     opening_angle > 0 || error("Profile opening_angle must be positive")
     expansion_order > 0 || error("Profile fmm.expansion_order must be positive")
@@ -153,6 +179,22 @@ function load_profile(path::AbstractString)
     num_steps >= 0 || error("Profile steps must be non-negative")
     verification_energy_max_particles >= 0 || error("Profile verification_energy_max_particles must be non-negative")
     fps > 0 || error("Profile fps must be positive")
+
+    kernel = if kernel_type == "plummer_gravity"
+        PlummerGravity(interaction_strength, smoothing)
+    elseif kernel_type == "yukawa_gravity"
+        screening_length = Float64(_required(kernel_config, "screening_length", "kernel"))
+        screening_length > 0 || error("Profile kernel.screening_length must be positive")
+        YukawaGravity(interaction_strength, smoothing, screening_length)
+    else
+        error("Unknown kernel '$kernel_type'. Expected one of: plummer_gravity, yukawa_gravity")
+    end
+    integrator = if integrator_type == "semi_implicit_euler"
+        SemiImplicitEuler()
+    else
+        error("Unknown integrator '$integrator_type'. Expected one of: semi_implicit_euler")
+    end
+    require_solver_support(solver, kernel, integrator)
 
     if haskey(particles, "state_file")
         state_path = String(particles["state_file"])
@@ -165,12 +207,12 @@ function load_profile(path::AbstractString)
         size(positions) == size(velocities) || error("positions and velocities must have the same shape")
         length(masses) == size(positions, 2) || error("masses must contain one value per particle")
     else
-        positions, velocities, masses = _generated_particles(particles, interaction_strength)
+        positions, velocities, masses = _generated_particles(particles, kernel)
     end
 
     all(masses .> 0) || error("Profile masses must be positive")
     
-    return SimulationProfile(interaction_strength, smoothing, particle_radius, opening_angle,
+    return SimulationProfile(kernel, integrator, solver, interaction_strength, smoothing, particle_radius, opening_angle,
                              FMMProfile(expansion_order, multipole_acceptance, leaf_size),
                              timestep, num_steps, verification_enabled,
                              verification_energy_max_particles, video_encoding_enabled,

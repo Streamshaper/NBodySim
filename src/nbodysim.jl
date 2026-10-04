@@ -7,23 +7,12 @@ include("direct.jl")
 include("barneshut.jl")
 include("fmm.jl")
 
-function resolve_model(model_name::AbstractString)
-    normalized = lowercase(model_name)
-    if normalized == "direct" || normalized == "d"
-        return "direct"
-    elseif normalized == "barneshut" || normalized == "bh"
-        return "barneshut"
-    elseif normalized == "fmm" || normalized == "f"
-        return "fmm"
-    else
-        error("Unknown model '$model_name'. Expected one of: direct, barneshut, fmm")
-    end
-end
+resolve_model(model_name::AbstractString) = solver_name(parse_solver(model_name))
 
 function parse_cli_args(args::Vector{String})
     if isempty(args)
-        println("Usage: julia --project=. src/nbodysim.jl <direct|barneshut|fmm> [profile] [steps]")
-        return "direct", "profiles/default.toml", nothing
+        println("Usage: julia --project=. src/nbodysim.jl [<direct|barneshut|fmm>] [profile] [steps]")
+        return nothing, "profiles/default.toml", nothing
     end
 
     first = args[1]
@@ -34,16 +23,19 @@ function parse_cli_args(args::Vector{String})
         return model, profile, steps
     end
 
-    model = "direct"
+    model = nothing
     profile = first
     steps = length(args) >= 2 ? parse(Int, args[2]) : nothing
     return model, profile, steps
 end
 
-function run_selected_model(model_name::AbstractString,
+function run_selected_model(model_name::Union{Nothing,AbstractString}=nothing,
                            profile_path::AbstractString="profiles/default.toml",
                            steps_override::Union{Nothing,Int}=nothing)
-    model = resolve_model(model_name)
+    profile_file = isabspath(profile_path) ? profile_path : joinpath(@__DIR__, "..", profile_path)
+    profile = load_profile(profile_file)
+    solver = selected_solver(model_name, profile.solver)
+    model = solver_name(solver)
 
     if model == "direct"
         return run_direct_simulation(profile_path, steps_override)
