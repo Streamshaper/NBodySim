@@ -148,7 +148,7 @@ Upon completion, the simulation generates the following artifacts:
 
 * **Stopwatch Log (`logs/stopwatch.csv`)**: If `simulation.logging_enabled` is set to `true`, simulation and video-encoding timings are appended independently of whether video encoding is enabled. When video encoding is disabled, the encoding time is recorded as `0.00`.
 
-* **Verification Logs (`logs/YYYY-MM-DD/verification_*.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change. Verification CSVs are stored in the same date-stamped directory used to archive SLURM job logs.
+* **Verification Logs (`logs/YYYY-MM-DD/verification_<job_id>.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change. SLURM runs use the job ID in the filename and are stored in the same date-stamped directory used to archive SLURM job logs. Non-SLURM runs use `verification_local.csv`.
 
 
 

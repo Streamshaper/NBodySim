@@ -242,7 +242,7 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
     if rank == 0
         println("Total simulation time: $simulation_time seconds")
         if profile.verification_enabled
-            verification_file = verification_log_path("barnes_hut", num_particles, num_steps)
+            verification_file = verification_log_path()
             mkpath(dirname(verification_file))
             open(verification_file, "w") do io
                 write_verification_header(io)

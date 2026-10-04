@@ -80,8 +80,9 @@ function write_verification_row(io, step::Int, time::Float64, metrics)
                       metrics.relative_angular_momentum_change), ','))
 end
 
-function verification_log_path(model::String, num_particles::Int, num_steps::Int)
+function verification_log_path()
     date_directory = Dates.format(Dates.today(), dateformat"yyyy-mm-dd")
-    filename = "verification_$(model)_$(num_particles)p_$(num_steps)s.csv"
+    job_id = get(ENV, "SLURM_JOB_ID", "local")
+    filename = "verification_$(job_id).csv"
     return joinpath("logs", date_directory, filename)
 end
