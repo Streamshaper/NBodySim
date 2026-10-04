@@ -25,6 +25,17 @@ mutable struct GravitationalSystem{T}
     smoothing::T
 end
 
+function update_system!(sys::GravitationalSystem{T}, pos::AbstractMatrix{T}, masses::AbstractVector{T}, indices) where T
+    # The FMM typically accumulates into the potential matrix, so it must be zeroed every step
+    fill!(sys.potential, zero(T))
+    
+    @inbounds for (i, idx) in enumerate(indices)
+        # Extract individual coordinates to avoid allocating array slices
+        p = SVector{3,T}(pos[1, idx], pos[2, idx], pos[3, idx])
+        sys.bodies[i] = FMMBody{T}(p, sys.bodies[i].radius, masses[idx])
+    end
+end
+
 function GravitationalSystem(pos::Matrix{T}, masses::Vector{T}; particle_radius::T,
                              smoothing::T, interaction_strength::T) where {T <: AbstractFloat}
     bodies = [FMMBody(SVector{3,T}(pos[:, i]), particle_radius, masses[i]) for i in axes(pos, 2)]
@@ -86,28 +97,33 @@ end
 
 # Compute local FMM accelerations and reduce the global state.
 function simulation_step_fmm_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                             profile::SimulationProfile, comm, rank::Int, n_ranks::Int)
-    local_pos = zeros(size(pos))
-    local_vel = zeros(size(vel))
-    local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
-    source_system = GravitationalSystem(pos, masses; particle_radius = profile.particle_radius,
-                                        smoothing = profile.smoothing,
-                                        interaction_strength = profile.interaction_strength)
-    target_system = GravitationalSystem(pos[:, local_range], masses[local_range];
-                                        particle_radius = profile.particle_radius,
-                                        smoothing = profile.smoothing,
-                                        interaction_strength = profile.interaction_strength)
+                                  local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
+                                  source_system::GravitationalSystem{Float64}, 
+                                  target_system::GravitationalSystem{Float64},
+                                  profile::SimulationProfile, comm, local_range)
+    fill!(local_pos, 0.0)
+    fill!(local_vel, 0.0)
+
+    # Update systems in-place (Zero allocations)
+    update_system!(source_system, pos, masses, axes(pos, 2))
+    update_system!(target_system, pos, masses, local_range)
+
     fmm!(target_system, source_system; gradient = true,
             expansion_order = profile.fmm.expansion_order,
             multipole_acceptance = profile.fmm.multipole_acceptance,
             silence_warnings = true)
 
-    accs = @view target_system.potential[5:7, :]
-
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]
-        local_vel[:, global_index] .= vel[:, global_index] .+ accs[:, local_index] .* profile.timestep
-        local_pos[:, global_index] .= pos[:, global_index] .+ local_vel[:, global_index] .* profile.timestep
+
+        # Explicitly unroll the 3D update to guarantee zero allocations
+        @inbounds for d in 1:3
+            # Index directly into the potential matrix
+            acc = target_system.potential[4 + d, local_index]
+
+            local_vel[d, global_index] = vel[d, global_index] + acc * profile.timestep
+            local_pos[d, global_index] = pos[d, global_index] + local_vel[d, global_index] * profile.timestep
+        end
     end
 
     MPI.Allreduce!(local_pos, pos, +, comm)
@@ -167,9 +183,27 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
 
     log_interval = max(1, num_steps ÷ 10)
 
+    local_range = mpi_local_range(num_particles, rank, n_ranks)
+    local_pos = zeros(size(pos))
+    local_vel = zeros(size(vel))
+
+    # Pre-allocate global source system
+    source_system = GravitationalSystem(pos, masses; 
+                                        particle_radius = profile.particle_radius,
+                                        smoothing = profile.smoothing,
+                                        interaction_strength = profile.interaction_strength)
+    
+    # Pre-allocate local target system using dummy arrays (avoids slicing allocations)
+    target_pos_dummy = zeros(3, length(local_range))
+    target_mass_dummy = zeros(length(local_range))
+    target_system = GravitationalSystem(target_pos_dummy, target_mass_dummy; 
+                                        particle_radius = profile.particle_radius,
+                                        smoothing = profile.smoothing,
+                                        interaction_strength = profile.interaction_strength)
+
     simulation_time = @elapsed begin
         for step in 1:num_steps
-            simulation_step_fmm_mpi!(pos, vel, masses, profile, comm, rank, n_ranks)
+            simulation_step_fmm_mpi!(pos, vel, masses, local_pos, local_vel, source_system, target_system, profile, comm, local_range)
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
                     push!(frames, copy(pos))
