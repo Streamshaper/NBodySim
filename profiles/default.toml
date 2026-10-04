@@ -3,11 +3,11 @@ interaction_strength = 6.67430e-11
 smoothing = 100.0
 particle_radius = 0.0
 timestep = 300
-steps = 2400
+steps = 240
 verification_enabled = true
 verification_energy_max_particles = 2000
 store_data = true
-video_encoding_enabled = true
+video_encoding_enabled = false
 logging_enabled = true
 fps = 60
 

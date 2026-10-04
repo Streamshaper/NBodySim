@@ -3,6 +3,7 @@ using Test
 include(joinpath(@__DIR__, "..", "src", "profile.jl"))
 include(joinpath(@__DIR__, "..", "src", "verification.jl"))
 include(joinpath(@__DIR__, "..", "src", "logging.jl"))
+include(joinpath(@__DIR__, "..", "src", "cli_args.jl"))
 
 @testset "Semi-implicit Euler integrator" begin
     pos = [1.0; 2.0; 3.0;;]
@@ -162,4 +163,19 @@ end
     @test selected_solver("fmm", DirectSolver()) == FMMSolver()
     @test_throws ErrorException parse_solver("unknown")
     @test supports_integrator(BarnesHutSolver(), SemiImplicitEuler())
+end
+
+@testset "Profile-first command-line arguments" begin
+    @test parse_cli_args(["profiles/default.toml"]) ==
+          (nothing, "profiles/default.toml", nothing)
+    @test parse_cli_args(["profiles/default.toml", "fmm"]) ==
+          ("fmm", "profiles/default.toml", nothing)
+    @test parse_cli_args(["profiles/default.toml", "bh", "50"]) ==
+          ("barneshut", "profiles/default.toml", 50)
+    @test parse_cli_args(["profiles/default.toml", "50"]) ==
+          (nothing, "profiles/default.toml", 50)
+    @test parse_cli_args(["fmm", "profiles/default.toml", "50"]) ==
+          ("fmm", "profiles/default.toml", 50)
+    @test_throws ErrorException parse_cli_args(["profiles/default.toml", "50", "fmm"])
+    @test_throws ErrorException parse_cli_args(["profiles/default.toml", "fmm", "10", "extra"])
 end

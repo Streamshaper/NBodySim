@@ -36,3 +36,6 @@ function parse_solver(name::AbstractString)
     normalized in ("fmm", "f") && return FMMSolver()
     error("Unknown solver '$name'. Expected one of: direct, barneshut, fmm")
 end
+
+is_solver_name(name::AbstractString) =
+    lowercase(name) in ("direct", "d", "barneshut", "bh", "fmm", "f")

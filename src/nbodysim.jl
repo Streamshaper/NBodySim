@@ -6,28 +6,7 @@ end
 include("direct.jl")
 include("barneshut.jl")
 include("fmm.jl")
-
-resolve_model(model_name::AbstractString) = solver_name(parse_solver(model_name))
-
-function parse_cli_args(args::Vector{String})
-    if isempty(args)
-        println("Usage: julia --project=. src/nbodysim.jl [<direct|barneshut|fmm>] [profile] [steps]")
-        return nothing, "profiles/default.toml", nothing
-    end
-
-    first = args[1]
-    if lowercase(first) in ("direct", "barneshut", "fmm", "d", "bh", "f")
-        model = resolve_model(first)
-        profile = length(args) >= 2 ? args[2] : "profiles/default.toml"
-        steps = length(args) >= 3 ? parse(Int, args[3]) : nothing
-        return model, profile, steps
-    end
-
-    model = nothing
-    profile = first
-    steps = length(args) >= 2 ? parse(Int, args[2]) : nothing
-    return model, profile, steps
-end
+include("cli_args.jl")
 
 function run_selected_model(model_name::Union{Nothing,AbstractString}=nothing,
                            profile_path::AbstractString="profiles/default.toml",

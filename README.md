@@ -54,26 +54,30 @@ kernel, and integrator compatibility is validated when loading the profile.
 ### Running Locally
 
 ```bash
-julia --project=. src/nbodysim.jl direct profiles/default.toml
-julia --project=. src/nbodysim.jl barneshut profiles/default.toml 50
-julia --project=. src/nbodysim.jl fmm profiles/default.toml
+julia --project=. src/nbodysim.jl profiles/default.toml
+julia --project=. src/nbodysim.jl profiles/default.toml barneshut 50
+julia --project=. src/nbodysim.jl profiles/default.toml fmm
 ```
 
-To use the solver selected in the profile, omit the solver argument:
+The optional solver name overrides `[solver].type` in the profile. To use the
+configured solver, omit that argument. For compatibility, the previous
+solver-first form is still accepted:
 
 ```bash
-julia --project=. src/nbodysim.jl profiles/default.toml
+julia --project=. src/nbodysim.jl fmm profiles/default.toml
 ```
 
 The individual solver entry points still work when launched directly, but the wrapper is the recommended front-end.
 
 ### Running on a SLURM Cluster
 
-To dispatch a simulation job to a SLURM queue, use the provided `submit.sh` bash script. It requires the target Julia script (the solver) and an optional profile name. It falls back to the `planetary` profile if omitted.
+To dispatch a simulation job to a SLURM queue, use the provided `submit.sh`
+bash script. It accepts a profile name and an optional solver override. The
+profile defaults to `planetary` when omitted.
 
 ```bash
-# Usage: sbatch scripts/submit.sh <model_name> [profile_name]
-sbatch scripts/submit.sh fmm default
+# Usage: sbatch scripts/submit.sh <profile_name> [solver_override]
+sbatch scripts/submit.sh default fmm
 
 ```
 
