@@ -1,10 +1,10 @@
 # NBodySim
 
-NBodySim is a high-performance, Julia-based 3D gravitational N-body simulation framework. It calculates gravitational interactions using multiple algorithmic solvers and is designed for both local execution and distributed computing clusters via MPI and multi-threading.
+NBodySim is a high-performance, Julia-based 3D particle interaction simulation framework. It supports gravitational and Coulomb interactions using multiple algorithmic solvers and is designed for both local execution and distributed computing clusters via MPI and multi-threading.
 
 ## Core Features
 
-* **Direct Summation**: A baseline $O(N^2)$ solver for exact gravitational interaction calculations.
+* **Direct Summation**: A baseline $O(N^2)$ solver for exact pairwise interaction calculations.
 
 
 * **Barnes-Hut**: A tree-based approximation algorithm utilizing `AdaptiveHierarchicalRegularBinning` for spatial partitioning.
@@ -57,6 +57,7 @@ kernel, and integrator compatibility is validated when loading the profile.
 julia --project=. src/nbodysim.jl profiles/default.toml
 julia --project=. src/nbodysim.jl profiles/default.toml barneshut 50
 julia --project=. src/nbodysim.jl profiles/default.toml fmm
+julia --project=. src/nbodysim.jl profiles/coulomb.toml
 ```
 
 The optional solver name overrides `[solver].type` in the profile. To use the
@@ -115,6 +116,24 @@ screening_length = 1.0e6
 
 Barnes–Hut and FMM currently support only `plummer_gravity`. Selecting another
 kernel with either solver produces an explicit unsupported-kernel error.
+The direct solver also supports Coulomb interactions, where masses determine
+inertia and charges determine electric coupling:
+
+```toml
+[kernel]
+type = "coulomb"
+interaction_strength = 1
+smoothing = 0.0
+
+[particles]
+positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+velocities = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+masses = [1.0, 1.0]
+charges = [1.0, -1.0]
+```
+
+Coulomb profiles require explicit per-particle charges and an explicit initial
+state; the gravity-specific generated orbit initializer does not apply.
 
 The integrator is selected separately in an `[integrator]` table. The current
 implementation supports semi-implicit Euler:
@@ -139,10 +158,10 @@ Simulations are controlled entirely via `.toml` configuration profiles. Profiles
 
 ### Core Parameters
 
-* `interaction_strength`: Sets the effective pairwise interaction strength (e.g., the gravitational constant for Newtonian gravity).
+* `kernel.interaction_strength`: Sets the coupling strength for the selected kernel (for example, the gravitational constant or Coulomb constant, in the chosen units).
 
 
-* `smoothing`: The Plummer softening length utilized in Barnes-Hut and FMM calculations to prevent singularities.
+* `kernel.smoothing`: The softening length used by the selected kernel. Barnes–Hut and FMM currently use the Plummer-gravity kernel.
 
 
 * `particle_radius`: The physical radius supplied to FMM for its particle geometry, independent of the force softening length.
@@ -172,6 +191,7 @@ Alternatively, for small, fully fixed initial states, you can provide the 3D row
 positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 velocities = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 masses = [1.0, 1.0]
+charges = [0.0, 0.0] # Optional; omitted charges default to zero.
 
 ```
 
@@ -187,11 +207,15 @@ state_file = "particles.bin"
 
 ```
 
-You can generate this binary file directly from Julia using the `write_particle_state` helper, which writes a format header, the particle count, and the contiguous `Float64` position, velocity, and mass arrays:
+Newly written files use the NBS2 format. You can generate one directly from Julia using the
+`write_particle_state` helper, which writes a format header, particle count, and
+contiguous `Float64` position, velocity, mass, and charge arrays. Charges default
+to zero when omitted. The reader also accepts the previous NBS1 format, assigning
+zero charge to those particles:
 
 ```julia
 include("src/profile.jl")
-write_particle_state("particles.bin", positions, velocities, masses)
+write_particle_state("particles.bin", positions, velocities, masses; charges)
 
 ```
 
@@ -199,7 +223,7 @@ write_particle_state("particles.bin", positions, velocities, masses)
 
 Upon completion, the simulation generates the following artifacts:
 
-* **HDF5 Data (`output/simulations/`)**: High-performance chunked and compressed data files storing particle positions, velocities, and static masses at each timestep. Toggle this via `simulation.store_data`.
+* **HDF5 Data (`output/simulations/`)**: High-performance chunked and compressed data files storing particle positions and velocities at each timestep, along with static masses and charges. Kernel, solver, and integrator names are included in the metadata. Toggle this via `simulation.store_data`.
 
 
 * **Video Animation (`output/`)**: If `simulation.video_encoding_enabled` is set to `true`, a dual-angle 3D MP4 animation is exported.
@@ -210,4 +234,4 @@ Upon completion, the simulation generates the following artifacts:
 
 
 
-Verification can be disabled by setting `simulation.verification_enabled = false`. Total energy calculation uses the Plummer-softened potential and scales at $O(N^2)$. To maintain performance in large simulations, exact energy is only computed if the particle count is below `simulation.verification_energy_max_particles` (default 2000); otherwise, the energy columns return `NaN` while the $O(N)$ momentum conservation checks remain active.
+Verification can be disabled by setting `simulation.verification_enabled = false`. Total energy uses the selected kernel's pair potential and scales at $O(N^2)$. To maintain performance in large simulations, exact energy is only computed if the particle count is below `simulation.verification_energy_max_particles` (default 2000); otherwise, the energy columns return `NaN` while the $O(N)$ momentum conservation checks remain active.

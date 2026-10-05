@@ -1,0 +1,33 @@
+[simulation]
+timestep = 0.001
+steps = 100
+verification_enabled = true
+verification_energy_max_particles = 2000
+store_data = true
+video_encoding_enabled = false
+logging_enabled = true
+fps = 30.0
+
+[kernel]
+type = "coulomb"
+interaction_strength = 1.0
+smoothing = 0.01
+
+[integrator]
+type = "semi_implicit_euler"
+
+[solver]
+type = "direct"
+
+[particles]
+# Dimensionless example: two unit masses with opposite unit charges.
+positions = [
+    [-0.5, 0.0, 0.0],
+    [0.5, 0.0, 0.0],
+]
+velocities = [
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+]
+masses = [1.0, 1.0]
+charges = [1.0, -1.0]

@@ -12,16 +12,18 @@ function run_selected_model(model_name::Union{Nothing,AbstractString}=nothing,
                            profile_path::AbstractString="profiles/default.toml",
                            steps_override::Union{Nothing,Int}=nothing)
     profile_file = isabspath(profile_path) ? profile_path : joinpath(@__DIR__, "..", profile_path)
-    profile = load_profile(profile_file)
+    profile = model_name === nothing ?
+        load_profile(profile_file) :
+        load_profile(profile_file; solver_override=parse_solver(model_name))
     solver = selected_solver(model_name, profile.solver)
     model = solver_name(solver)
 
     if model == "direct"
-        return run_direct_simulation(profile_path, steps_override)
+        return run_direct_simulation(profile_path, steps_override; solver_override=solver)
     elseif model == "barneshut"
-        return run_barneshut_simulation(profile_path, steps_override)
+        return run_barneshut_simulation(profile_path, steps_override; solver_override=solver)
     elseif model == "fmm"
-        return run_fmm_simulation(profile_path, steps_override)
+        return run_fmm_simulation(profile_path, steps_override; solver_override=solver)
     end
 
     error("Unsupported simulation model '$model_name'")

@@ -148,9 +148,10 @@ function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
 end
 
 function run_barneshut_simulation(profile_path::AbstractString="profiles/default.toml",
-                                num_steps_override::Union{Nothing,Int}=nothing)
+                                num_steps_override::Union{Nothing,Int}=nothing;
+                                solver_override::BarnesHutSolver=BarnesHutSolver())
     profile_file = isabspath(profile_path) ? profile_path : joinpath(dirname(@__DIR__), profile_path)
-    profile = load_profile(profile_file)
+    profile = load_profile(profile_file; solver_override)
     require_solver_support(BarnesHutSolver(), profile.kernel, profile.integrator)
 
     MPI.Init()
@@ -164,19 +165,23 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
     num_steps = num_steps_override === nothing ? profile.num_steps : Int(num_steps_override)
 
     verification_baseline = profile.verification_enabled ?
-        verification_reference(profile.positions, profile.velocities, profile.masses,
+        verification_reference(profile.positions, profile.velocities,
+                               profile.masses, profile.charges,
                                profile.kernel,
                                profile.verification_energy_max_particles) : nothing
     verification_rows = rank == 0 && profile.verification_enabled ?
         [(0, 0.0, verification_metrics(profile.positions, profile.velocities,
-                                        profile.masses, profile.kernel, verification_baseline,
+                                        profile.masses, profile.charges,
+                                        profile.kernel, verification_baseline,
                                         profile.verification_energy_max_particles))] : nothing
 
-    pos, vel, masses = rank == 0 ? (copy(profile.positions), copy(profile.velocities), copy(profile.masses)) :
-                                    (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles))
+    pos, vel, masses, charges = rank == 0 ?
+        (copy(profile.positions), copy(profile.velocities), copy(profile.masses), copy(profile.charges)) :
+        (zeros(3, num_particles), zeros(3, num_particles), zeros(num_particles), zeros(num_particles))
     MPI.Bcast!(pos, 0, comm)
     MPI.Bcast!(vel, 0, comm)
     MPI.Bcast!(masses, 0, comm)
+    MPI.Bcast!(charges, 0, comm)
 
     if rank == 0
         if profile.video_encoding_enabled || profile.store_data
@@ -214,7 +219,7 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
             if rank == 0 && profile.verification_enabled
                 if step % log_interval == 0 || step == num_steps
                     push!(verification_rows, (step, step * profile.timestep,
-                                              verification_metrics(pos, vel, masses,
+                                              verification_metrics(pos, vel, masses, charges,
                                                                    profile.kernel, verification_baseline,
                                                                    profile.verification_energy_max_particles)))
                 end
@@ -261,7 +266,8 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
     end
 
     if rank == 0 && profile.store_data
-        save_simulation_hdf5(frames, vel_frames, masses, profile, num_particles, num_steps, "B-H")
+        save_simulation_hdf5(frames, vel_frames, masses, charges, profile,
+                             num_particles, num_steps, "B-H")
     end
 
     MPI.Barrier(comm)

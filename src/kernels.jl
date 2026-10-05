@@ -11,9 +11,20 @@ struct YukawaGravity <: AbstractKernel
     screening_length::Float64
 end
 
+struct Coulomb <: AbstractKernel
+    interaction_strength::Float64
+    smoothing::Float64
+end
+
+struct ParticleProperties
+    mass::Float64
+    charge::Float64
+end
+
 kernel_name(kernel::AbstractKernel) = string(nameof(typeof(kernel)))
 kernel_name(::PlummerGravity) = "plummer_gravity"
 kernel_name(::YukawaGravity) = "yukawa_gravity"
+kernel_name(::Coulomb) = "coulomb"
 
 supports_kernel(::Symbol, ::AbstractKernel) = false
 supports_kernel(::Val, ::AbstractKernel) = false
@@ -27,33 +38,53 @@ function require_kernel_support(solver::Symbol, kernel::AbstractKernel)
     return nothing
 end
 
-function kernel_acceleration(kernel::PlummerGravity, source_mass::Float64,
+function kernel_acceleration(kernel::PlummerGravity, target::ParticleProperties,
+                             source::ParticleProperties,
                              dx::Float64, dy::Float64, dz::Float64)::NTuple{3, Float64}
     distance_squared = dx^2 + dy^2 + dz^2 + kernel.smoothing^2
-    scale = kernel.interaction_strength * source_mass / distance_squared^1.5
+    scale = kernel.interaction_strength * source.mass / distance_squared^1.5
     return (scale * dx, scale * dy, scale * dz)
 end
 
-function kernel_acceleration(kernel::YukawaGravity, source_mass::Float64,
+function kernel_acceleration(kernel::YukawaGravity, target::ParticleProperties,
+                             source::ParticleProperties,
                              dx::Float64, dy::Float64, dz::Float64)::NTuple{3, Float64}
     distance_squared = dx^2 + dy^2 + dz^2 + kernel.smoothing^2
     distance = sqrt(distance_squared)
-    scale = kernel.interaction_strength * source_mass * exp(-distance / kernel.screening_length) *
+    scale = kernel.interaction_strength * source.mass * exp(-distance / kernel.screening_length) *
             (1 / distance_squared^1.5 + 1 / (kernel.screening_length * distance_squared))
     return (scale * dx, scale * dy, scale * dz)
 end
 
-function pair_potential(kernel::PlummerGravity, mass_a::Float64, mass_b::Float64,
-                        dx::Float64, dy::Float64, dz::Float64)::Float64
-    distance = sqrt(dx^2 + dy^2 + dz^2 + kernel.smoothing^2)
-    return -kernel.interaction_strength * mass_a * mass_b / distance
+function kernel_acceleration(kernel::Coulomb, target::ParticleProperties,
+                             source::ParticleProperties,
+                             dx::Float64, dy::Float64, dz::Float64)::NTuple{3, Float64}
+    distance_squared = dx^2 + dy^2 + dz^2 + kernel.smoothing^2
+    scale = -kernel.interaction_strength * target.charge * source.charge /
+            (target.mass * distance_squared^1.5)
+    return (scale * dx, scale * dy, scale * dz)
 end
 
-function pair_potential(kernel::YukawaGravity, mass_a::Float64, mass_b::Float64,
+function pair_potential(kernel::PlummerGravity, particle_a::ParticleProperties,
+                        particle_b::ParticleProperties,
                         dx::Float64, dy::Float64, dz::Float64)::Float64
     distance = sqrt(dx^2 + dy^2 + dz^2 + kernel.smoothing^2)
-    return -kernel.interaction_strength * mass_a * mass_b *
+    return -kernel.interaction_strength * particle_a.mass * particle_b.mass / distance
+end
+
+function pair_potential(kernel::YukawaGravity, particle_a::ParticleProperties,
+                        particle_b::ParticleProperties,
+                        dx::Float64, dy::Float64, dz::Float64)::Float64
+    distance = sqrt(dx^2 + dy^2 + dz^2 + kernel.smoothing^2)
+    return -kernel.interaction_strength * particle_a.mass * particle_b.mass *
            exp(-distance / kernel.screening_length) / distance
+end
+
+function pair_potential(kernel::Coulomb, particle_a::ParticleProperties,
+                        particle_b::ParticleProperties,
+                        dx::Float64, dy::Float64, dz::Float64)::Float64
+    distance = sqrt(dx^2 + dy^2 + dz^2 + kernel.smoothing^2)
+    return kernel.interaction_strength * particle_a.charge * particle_b.charge / distance
 end
 
 circular_orbital_speed(kernel::PlummerGravity, central_mass::Float64,
@@ -62,7 +93,9 @@ circular_orbital_speed(kernel::PlummerGravity, central_mass::Float64,
 
 function circular_orbital_speed(kernel::YukawaGravity, central_mass::Float64,
                                 radius::Float64)
-    radial_acceleration = kernel_acceleration(kernel, central_mass, radius, 0.0, 0.0)[1]
+    radial_acceleration = kernel_acceleration(
+        kernel, ParticleProperties(1.0, 0.0), ParticleProperties(central_mass, 0.0),
+        radius, 0.0, 0.0)[1]
     return sqrt(radius * radial_acceleration)
 end
 

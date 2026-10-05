@@ -4,6 +4,7 @@ using HDF5
 function save_simulation_hdf5(frames::Vector{Matrix{Float64}}, 
                               vel_frames::Vector{Matrix{Float64}}, 
                               masses::Vector{Float64}, 
+                              charges::Vector{Float64},
                               profile, 
                               num_particles::Int, 
                               num_steps::Int,
@@ -19,12 +20,15 @@ function save_simulation_hdf5(frames::Vector{Matrix{Float64}},
         HDF5.attributes(h5file)["interaction_strength"] = profile.interaction_strength
         HDF5.attributes(h5file)["smoothing"] = profile.smoothing
         HDF5.attributes(h5file)["kernel"] = kernel_name(profile.kernel)
+        HDF5.attributes(h5file)["solver"] = solver_name(profile.solver)
+        HDF5.attributes(h5file)["integrator"] = integrator_name(profile.integrator)
         HDF5.attributes(h5file)["timestep"] = profile.timestep
         HDF5.attributes(h5file)["num_particles"] = num_particles
         HDF5.attributes(h5file)["num_steps"] = num_steps
         
         # Write Static Data
         h5file["masses"] = masses
+        h5file["charges"] = charges
         
         num_saved_steps = length(frames)
         

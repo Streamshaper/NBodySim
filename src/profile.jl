@@ -17,7 +17,8 @@ if !@isdefined __NBodySimSolversLoaded
 end
 
 # Particle-state file tag.
-const PARTICLE_STATE_MAGIC = UInt8[0x4e, 0x42, 0x53, 0x31]
+const PARTICLE_STATE_MAGIC_V1 = UInt8[0x4e, 0x42, 0x53, 0x31]
+const PARTICLE_STATE_MAGIC = UInt8[0x4e, 0x42, 0x53, 0x32]
 
 struct FMMProfile
     expansion_order::Int
@@ -45,6 +46,7 @@ struct SimulationProfile{K<:AbstractKernel, I<:AbstractIntegrator, S<:AbstractSo
     positions::Matrix{Float64}
     velocities::Matrix{Float64}
     masses::Vector{Float64}
+    charges::Vector{Float64}
 end
 
 # Require a config value.
@@ -63,6 +65,7 @@ end
 
 # Generate a central-mass system with orbiting satellites.
 function _generated_particles(particles, kernel::AbstractKernel)
+    kernel isa Coulomb && error("Coulomb profiles require an explicit particle state")
     count = Int(_required(particles, "count", "particles"))
     count > 1 || error("Profile particle count must be at least 2 for a central body system")
     seed = Int(get(particles, "seed", 1))
@@ -75,6 +78,9 @@ function _generated_particles(particles, kernel::AbstractKernel)
     positions = zeros(3, count)
     velocities = zeros(3, count)
     masses = zeros(count)
+    charges = Float64.(get(particles, "charges", zeros(count)))
+    length(charges) == count || error("Generated particle charges must match particles.count")
+    all(isfinite, charges) || error("Particle charges must be finite")
     
     # 1. Central Body
     central_mass = total_mass / 2.0
@@ -98,16 +104,19 @@ function _generated_particles(particles, kernel::AbstractKernel)
         velocities[:, index] .= (-speed * sin(angle), speed * cos(angle), 0.0)
     end
     
-    return positions, velocities, masses
+    return positions, velocities, masses, charges
 end
 
 # Persist a particle state for later reloads.
 function write_particle_state(path::AbstractString, positions::Matrix{Float64},
-                              velocities::Matrix{Float64}, masses::Vector{Float64})
+                              velocities::Matrix{Float64}, masses::Vector{Float64};
+                              charges::Vector{Float64}=zeros(length(masses)))
     size(positions, 1) == 3 || error("positions must have shape 3 × N")
     size(velocities) == size(positions) || error("positions and velocities must have the same shape")
     length(masses) == size(positions, 2) || error("masses must contain one value per particle")
+    length(charges) == size(positions, 2) || error("charges must contain one value per particle")
     all(masses .> 0) || error("Particle masses must be positive")
+    all(isfinite, charges) || error("Particle charges must be finite")
 
     open(path, "w") do io
         write(io, PARTICLE_STATE_MAGIC)
@@ -115,13 +124,15 @@ function write_particle_state(path::AbstractString, positions::Matrix{Float64},
         write(io, positions)
         write(io, velocities)
         write(io, masses)
+        write(io, charges)
     end
     return path
 end
 
 function _load_particle_state(path::AbstractString)
     open(path, "r") do io
-        read(io, length(PARTICLE_STATE_MAGIC)) == PARTICLE_STATE_MAGIC ||
+        magic = read(io, length(PARTICLE_STATE_MAGIC))
+        magic in (PARTICLE_STATE_MAGIC_V1, PARTICLE_STATE_MAGIC) ||
             error("Invalid particle state file '$path'")
         count = Int(read(io, UInt64))
         count > 0 || error("Particle state file must contain at least one particle")
@@ -129,15 +140,19 @@ function _load_particle_state(path::AbstractString)
         positions = Matrix{Float64}(undef, 3, count)
         velocities = Matrix{Float64}(undef, 3, count)
         masses = Vector{Float64}(undef, count)
+        charges = zeros(count)
         read!(io, positions)
         read!(io, velocities)
         read!(io, masses)
-        return positions, velocities, masses
+        has_charge_data = magic == PARTICLE_STATE_MAGIC
+        has_charge_data && read!(io, charges)
+        return positions, velocities, masses, charges, has_charge_data
     end
 end
 
 # Load the profile and resolve the particle source.
-function load_profile(path::AbstractString)
+function load_profile(path::AbstractString;
+                      solver_override::Union{Nothing,AbstractSolver}=nothing)
     data = TOML.parsefile(path)
     simulation = get(data, "simulation", Dict{String, Any}())
     kernel_config = get(data, "kernel", Dict{String, Any}())
@@ -153,7 +168,8 @@ function load_profile(path::AbstractString)
     smoothing = Float64(get(kernel_config, "smoothing", get(simulation, "smoothing", 100.0)))
     kernel_type = lowercase(String(get(kernel_config, "type", "plummer_gravity")))
     integrator_type = lowercase(String(get(integrator_config, "type", "semi_implicit_euler")))
-    solver = parse_solver(String(get(solver_config, "type", "direct")))
+    configured_solver = parse_solver(String(get(solver_config, "type", "direct")))
+    solver = solver_override === nothing ? configured_solver : solver_override
     particle_radius = Float64(get(simulation, "particle_radius", 0.0))
     opening_angle = Float64(get(barnes_hut, "opening_angle", get(simulation, "opening_angle", 0.5)))
     expansion_order = Int(get(fmm, "expansion_order", 5))
@@ -186,8 +202,15 @@ function load_profile(path::AbstractString)
         screening_length = Float64(_required(kernel_config, "screening_length", "kernel"))
         screening_length > 0 || error("Profile kernel.screening_length must be positive")
         YukawaGravity(interaction_strength, smoothing, screening_length)
+    elseif kernel_type == "coulomb"
+        has_strength = haskey(kernel_config, "interaction_strength") ||
+                       haskey(kernel_config, "strength") ||
+                       haskey(simulation, "interaction_strength")
+        has_strength ||
+            error("Coulomb profiles must set an interaction strength in [kernel] or [simulation]")
+        Coulomb(interaction_strength, smoothing)
     else
-        error("Unknown kernel '$kernel_type'. Expected one of: plummer_gravity, yukawa_gravity")
+        error("Unknown kernel '$kernel_type'. Expected one of: plummer_gravity, yukawa_gravity, coulomb")
     end
     integrator = if integrator_type == "semi_implicit_euler"
         SemiImplicitEuler()
@@ -199,18 +222,25 @@ function load_profile(path::AbstractString)
     if haskey(particles, "state_file")
         state_path = String(particles["state_file"])
         state_path = isabspath(state_path) ? state_path : joinpath(dirname(abspath(path)), state_path)
-        positions, velocities, masses = _load_particle_state(state_path)
+        positions, velocities, masses, charges, has_charge_data = _load_particle_state(state_path)
     elseif haskey(particles, "positions")
         positions = _particle_matrix(particles["positions"], "positions")
         velocities = _particle_matrix(_required(particles, "velocities", "particles"), "velocities")
         masses = Float64.(_required(particles, "masses", "particles"))
+        charges = Float64.(get(particles, "charges", zeros(length(masses))))
+        has_charge_data = haskey(particles, "charges")
         size(positions) == size(velocities) || error("positions and velocities must have the same shape")
         length(masses) == size(positions, 2) || error("masses must contain one value per particle")
+        length(charges) == size(positions, 2) || error("charges must contain one value per particle")
     else
-        positions, velocities, masses = _generated_particles(particles, kernel)
+        positions, velocities, masses, charges = _generated_particles(particles, kernel)
+        has_charge_data = haskey(particles, "charges")
     end
 
     all(masses .> 0) || error("Profile masses must be positive")
+    all(isfinite, charges) || error("Profile charges must be finite")
+    kernel isa Coulomb && !has_charge_data &&
+        error("Coulomb profiles require explicit particle charges")
     
     return SimulationProfile(kernel, integrator, solver, interaction_strength, smoothing, particle_radius, opening_angle,
                              FMMProfile(expansion_order, multipole_acceptance, leaf_size),
@@ -218,5 +248,5 @@ function load_profile(path::AbstractString)
                              verification_energy_max_particles, video_encoding_enabled,
                              logging_enabled,
                              store_data, fps,
-                             positions, velocities, masses)
+                             positions, velocities, masses, charges)
 end
