@@ -109,9 +109,9 @@ function simulation_step_fmm_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, ma
     update_system!(target_system, pos, masses, local_range)
 
     fmm!(target_system, source_system; gradient = true,
-            expansion_order = profile.fmm.expansion_order,
-            multipole_acceptance = profile.fmm.multipole_acceptance,
-            silence_warnings = true)
+        expansion_order = profile.fmm.expansion_order,
+        multipole_acceptance = profile.fmm.multipole_acceptance,
+        silence_warnings = true)
 
     Threads.@threads for local_index in eachindex(local_range)
         global_index = local_range[local_index]

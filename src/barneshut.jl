@@ -13,65 +13,153 @@ end
 # Cached aggregate mass and center-of-mass for each tree node.
 getmass(node::SpatialTree) = getcontext(node)[:mass]
 getcom(node::SpatialTree)  = getcontext(node)[:com]
+getcharge(node::SpatialTree) = getcontext(node)[:charge]
+getchargecom(node::SpatialTree) = getcontext(node)[:charge_com]
+getdipole(node::SpatialTree) = getcontext(node)[:dipole]
+
+function coulomb_cell_acceleration(target_charge::Float64, target_mass::Float64,
+                                  charge_total::Float64, dipole::Vector{Float64},
+                                  tx::Float64, ty::Float64, tz::Float64,
+                                  interaction_strength::Float64)::NTuple{3, Float64}
+    r2 = tx^2 + ty^2 + tz^2
+    r2 <= 0.0 && return (0.0, 0.0, 0.0)
+    r = sqrt(r2)
+    inv_r3 = 1.0 / (r2 * r)
+    field_x = interaction_strength * charge_total * tx * inv_r3
+    field_y = interaction_strength * charge_total * ty * inv_r3
+    field_z = interaction_strength * charge_total * tz * inv_r3
+
+    if !all(iszero, dipole)
+        d_dot_r = dipole[1] * tx + dipole[2] * ty + dipole[3] * tz
+        dipole_scale = interaction_strength / (r^5)
+        field_x += dipole_scale * (3.0 * d_dot_r * tx - dipole[1] * r2)
+        field_y += dipole_scale * (3.0 * d_dot_r * ty - dipole[2] * r2)
+        field_z += dipole_scale * (3.0 * d_dot_r * tz - dipole[3] * r2)
+    end
+
+    return (target_charge * field_x / target_mass,
+            target_charge * field_y / target_mass,
+            target_charge * field_z / target_mass)
+end
 
 # Barnes-Hut acceleration: exact for near leaves, approximate for far cells.
 function net_acc(px::Float64, py::Float64, pz::Float64, node::SpatialTree,
                  tree::SpatialTree, θ::Float64, all_masses::Vector{Float64},
-                 interaction_strength::Float64, smoothing::Float64)::NTuple{3, Float64}
-    
+                 all_charges::Vector{Float64}, target_charge::Float64,
+                 target_mass::Float64, kernel::AbstractKernel = PlummerGravity(1.0, 0.0))::NTuple{3, Float64}
+    if !(kernel isa Coulomb)
+        s = sidelength(node)
+        com = getcom(node)
+        rx = com[1] - px
+        ry = com[2] - py
+        rz = com[3] - pz
+        dist_sq = rx^2 + ry^2 + rz^2
+        dist_sq <= 0.0 && return (0.0, 0.0, 0.0)
+
+        if isleaf(node)
+            pp = points(node)
+            idx = range(node)
+
+            acc_x = acc_y = acc_z = 0.0
+            for i in axes(pp, 2)
+                idx_orig = tree.info.perm[idx[i]]
+                dx = pp[1, i] - px
+                dy = pp[2, i] - py
+                dz = pp[3, i] - pz
+                d_sq = dx^2 + dy^2 + dz^2
+
+                if d_sq > 1e-12
+                    source = ParticleProperties(all_masses[idx_orig], 0.0)
+                    grav_x, grav_y, grav_z = kernel_acceleration(kernel, ParticleProperties(1.0, 0.0), source, dx, dy, dz)
+                    acc_x += grav_x
+                    acc_y += grav_y
+                    acc_z += grav_z
+                end
+            end
+            return (acc_x, acc_y, acc_z)
+        end
+
+        if s / sqrt(dist_sq) < θ
+            target = ParticleProperties(target_mass, 0.0)
+            source = ParticleProperties(getmass(node), 0.0)
+            return kernel_acceleration(kernel, target, source, rx, ry, rz)
+        end
+
+        acc_x = acc_y = acc_z = 0.0
+        for child in children(node)
+            cx, cy, cz = net_acc(px, py, pz, child, tree, θ, all_masses,
+                                 all_charges, target_charge, target_mass, kernel)
+            acc_x += cx
+            acc_y += cy
+            acc_z += cz
+        end
+        return (acc_x, acc_y, acc_z)
+    end
     s = sidelength(node)
-    com = getcom(node) # AHRB returns a Vector{Float64} here
-    
+    com = getcom(node)
+    charge_center = getchargecom(node)
+
     rx = com[1] - px
     ry = com[2] - py
     rz = com[3] - pz
     dist_sq = rx^2 + ry^2 + rz^2
 
     if isleaf(node)
-        pp  = points(node)
+        pp = points(node)
         idx = range(node)
-        
+
         acc_x = acc_y = acc_z = 0.0
 
         for i in axes(pp, 2)
             idx_orig = tree.info.perm[idx[i]]
-            
+
             dx = pp[1, i] - px
             dy = pp[2, i] - py
             dz = pp[3, i] - pz
             d_sq = dx^2 + dy^2 + dz^2
 
-            # Skip self-interaction
             if d_sq > 1e-12
-                grav_x, grav_y, grav_z = grav_acc(all_masses[idx_orig], dx, dy, dz,
-                                                  interaction_strength, smoothing)
+                target = ParticleProperties(target_mass, target_charge)
+                source = ParticleProperties(all_masses[idx_orig], all_charges[idx_orig])
+                grav_x, grav_y, grav_z = kernel_acceleration(kernel, target, source, dx, dy, dz)
                 acc_x += grav_x
                 acc_y += grav_y
                 acc_z += grav_z
             end
         end
         return (acc_x, acc_y, acc_z)
-        
+
     elseif s / sqrt(dist_sq) < θ
-        return grav_acc(getmass(node), rx, ry, rz, interaction_strength, smoothing)
-        
+        if kernel isa Coulomb
+            tx = px - charge_center[1]
+            ty = py - charge_center[2]
+            tz = pz - charge_center[3]
+            return coulomb_cell_acceleration(target_charge, target_mass, getcharge(node),
+                                             getdipole(node), tx, ty, tz,
+                                             kernel.interaction_strength)
+        end
+        target = ParticleProperties(target_mass, target_charge)
+        source = ParticleProperties(getmass(node), getcharge(node))
+        return kernel_acceleration(kernel, target, source, rx, ry, rz)
+
     else
         acc_x = acc_y = acc_z = 0.0
-        
+
         for child in children(node)
             cx, cy, cz = net_acc(px, py, pz, child, tree, θ, all_masses,
-                                 interaction_strength, smoothing)
+                                 all_charges, target_charge, target_mass, kernel)
             acc_x += cx
             acc_y += cy
             acc_z += cz
         end
-        
+
         return (acc_x, acc_y, acc_z)
     end
 end
 
 function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, masses::Vector{Float64},
-                                        tree::SpatialTree, profile::SimulationProfile, comm, rank::Int, n_ranks::Int,
+                                        charges::Vector{Float64}, tree::SpatialTree, profile::SimulationProfile,
+                                        comm, rank::Int, n_ranks::Int,
                                         local_pos::Matrix{Float64}, local_vel::Matrix{Float64})
     
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
@@ -85,10 +173,10 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
         px = pos[1, i]
         py = pos[2, i]
         pz = pos[3, i]
-        
+
         acc_x, acc_y, acc_z = net_acc(px, py, pz, tree, tree,
                                       profile.barnes_hut_opening_angle, masses,
-                                      profile.interaction_strength, profile.smoothing)
+                                      charges, charges[i], masses[i], profile.kernel)
         integrate_particle!(profile.integrator, local_pos, local_vel, pos, vel, i,
                             (acc_x, acc_y, acc_z), profile.timestep)
     end
@@ -98,53 +186,162 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
 end
 
 # Refresh aggregate mass and center of mass for each tree node without intermediate allocations.
-function update_mass_com!(tree::SpatialTree, masses::Vector{Float64})
+function update_mass_com!(tree::SpatialTree, masses::Vector{Float64}, charges::Vector{Float64}=zeros(length(masses));
+                          kernel::AbstractKernel = PlummerGravity(1.0, 0.0))
+    if !(kernel isa Coulomb)
+        foreach(PostOrderDFS(tree)) do node
+            if isleaf(node)
+                idx_range = range(node)
+                node_mass = 0.0
+                cx = cy = cz = 0.0
+                np = points(node)
+                for i in axes(np, 2)
+                    idx_orig = tree.info.perm[idx_range[i]]
+                    m = masses[idx_orig]
+                    node_mass += m
+                    cx += np[1, i] * m
+                    cy += np[2, i] * m
+                    cz += np[3, i] * m
+                end
+                if node_mass > 0
+                    cx /= node_mass
+                    cy /= node_mass
+                    cz /= node_mass
+                end
+                setcontext!(node, (; com = [cx, cy, cz], mass = node_mass,
+                                    charge = 0.0, charge_com = [cx, cy, cz],
+                                    dipole = [0.0, 0.0, 0.0]))
+            else
+                cx = cy = cz = 0.0
+                node_mass = 0.0
+                for child in children(node)
+                    ctx = getcontext(child)
+                    ccom = ctx[:com]
+                    cmass = ctx[:mass]
+                    cx += ccom[1] * cmass
+                    cy += ccom[2] * cmass
+                    cz += ccom[3] * cmass
+                    node_mass += cmass
+                end
+                if node_mass > 0
+                    cx /= node_mass
+                    cy /= node_mass
+                    cz /= node_mass
+                end
+                setcontext!(node, (; com = [cx, cy, cz], mass = node_mass,
+                                    charge = 0.0, charge_com = [cx, cy, cz],
+                                    dipole = [0.0, 0.0, 0.0]))
+            end
+        end
+        return nothing
+    end
+
     foreach(PostOrderDFS(tree)) do node
         if isleaf(node)
             idx_range = range(node)
             node_mass = 0.0
+            node_charge = 0.0
             cx = cy = cz = 0.0
-            
+            qx = qy = qz = 0.0
+            dipole_x = dipole_y = dipole_z = 0.0
+
             np = points(node)
-            # Allocation-free manual loop
             for i in axes(np, 2)
                 idx_orig = tree.info.perm[idx_range[i]]
                 m = masses[idx_orig]
-                
+                q = charges[idx_orig]
+
                 node_mass += m
+                node_charge += q
                 cx += np[1, i] * m
                 cy += np[2, i] * m
                 cz += np[3, i] * m
+                qx += np[1, i] * q
+                qy += np[2, i] * q
+                qz += np[3, i] * q
             end
-            
+
             if node_mass > 0
                 cx /= node_mass
                 cy /= node_mass
                 cz /= node_mass
             end
-            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass))
+            if abs(node_charge) > 0
+                charge_center_x = qx / node_charge
+                charge_center_y = qy / node_charge
+                charge_center_z = qz / node_charge
+                for i in axes(np, 2)
+                    idx_orig = tree.info.perm[idx_range[i]]
+                    q = charges[idx_orig]
+                    dipole_x += q * (np[1, i] - charge_center_x)
+                    dipole_y += q * (np[2, i] - charge_center_y)
+                    dipole_z += q * (np[3, i] - charge_center_z)
+                end
+                qx = charge_center_x
+                qy = charge_center_y
+                qz = charge_center_z
+            else
+                qx, qy, qz = cx, cy, cz
+            end
+            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass,
+                                charge = node_charge, charge_com = [qx, qy, qz],
+                                dipole = [dipole_x, dipole_y, dipole_z]))
         else
             cx = cy = cz = 0.0
+            qx = qy = qz = 0.0
             node_mass = 0.0
+            node_charge = 0.0
             for child in children(node)
                 ctx = getcontext(child)
                 ccom = ctx[:com]
                 cmass = ctx[:mass]
-                
+                ccharge = ctx[:charge]
+                ccharge_com = ctx[:charge_com]
+
                 cx += ccom[1] * cmass
                 cy += ccom[2] * cmass
                 cz += ccom[3] * cmass
+                qx += ccharge_com[1] * ccharge
+                qy += ccharge_com[2] * ccharge
+                qz += ccharge_com[3] * ccharge
                 node_mass += cmass
+                node_charge += ccharge
             end
-            
+
             if node_mass > 0
                 cx /= node_mass
                 cy /= node_mass
                 cz /= node_mass
             end
-            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass))
+            if abs(node_charge) > 0
+                charge_center_x = qx / node_charge
+                charge_center_y = qy / node_charge
+                charge_center_z = qz / node_charge
+            else
+                charge_center_x = cx
+                charge_center_y = cy
+                charge_center_z = cz
+            end
+
+            dipole_x = dipole_y = dipole_z = 0.0
+            for child in children(node)
+                ctx = getcontext(child)
+                ccharge = ctx[:charge]
+                ccharge_com = ctx[:charge_com]
+                cdipole = ctx[:dipole]
+                if abs(ccharge) > 0
+                    dipole_x += ccharge * (ccharge_com[1] - charge_center_x) + cdipole[1]
+                    dipole_y += ccharge * (ccharge_com[2] - charge_center_y) + cdipole[2]
+                    dipole_z += ccharge * (ccharge_com[3] - charge_center_z) + cdipole[3]
+                end
+            end
+
+            setcontext!(node, (; com = [cx, cy, cz], mass = node_mass,
+                                charge = node_charge, charge_com = [charge_center_x, charge_center_y, charge_center_z],
+                                dipole = [dipole_x, dipole_y, dipole_z]))
         end
     end
+    return nothing
 end
 
 function run_barneshut_simulation(profile_path::AbstractString="profiles/default.toml",
@@ -206,8 +403,8 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
         for step in 1:num_steps
             tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
 
-            update_mass_com!(tree, masses)
-            simulation_step_barneshut_mpi!(pos, vel, masses, tree, profile, comm, rank, n_ranks, local_pos_buffer, local_vel_buffer)
+            update_mass_com!(tree, masses, charges; kernel = profile.kernel)
+            simulation_step_barneshut_mpi!(pos, vel, masses, charges, tree, profile, comm, rank, n_ranks, local_pos_buffer, local_vel_buffer)
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
                     push!(frames, copy(pos))

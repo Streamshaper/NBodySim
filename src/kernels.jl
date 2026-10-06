@@ -30,7 +30,11 @@ supports_kernel(::Symbol, ::AbstractKernel) = false
 supports_kernel(::Val, ::AbstractKernel) = false
 supports_kernel(::Val{:direct}, ::AbstractKernel) = true
 supports_kernel(::Val{:barneshut}, ::PlummerGravity) = true
+supports_kernel(::Val{:barneshut}, ::Coulomb) = true
 supports_kernel(::Val{:fmm}, ::PlummerGravity) = true
+supports_kernel(::Val{:fmm}, ::Coulomb) = false
+supports_kernel(::Val{:barneshut}, ::YukawaGravity) = false
+supports_kernel(::Val{:fmm}, ::YukawaGravity) = false
 
 function require_kernel_support(solver::Symbol, kernel::AbstractKernel)
     supports_kernel(Val(solver), kernel) ||

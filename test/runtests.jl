@@ -52,7 +52,8 @@ end
     @test pair_potential(coulomb, positive_target, negative_source,
                          1.0, 0.0, 0.0) == -72.0
     @test supports_kernel(Val(:direct), coulomb)
-    @test !supports_kernel(Val(:barneshut), coulomb)
+    @test supports_kernel(Val(:barneshut), coulomb)
+    @test !supports_kernel(Val(:fmm), coulomb)
     coulomb_positions = [0.0 1.0; 0.0 0.0; 0.0 0.0]
     @test net_acc_direct(coulomb_positions, 1, [2.0, 3.0], [2.0, 3.0],
                          coulomb) == (-36.0, 0.0, 0.0)
@@ -80,7 +81,9 @@ end
 
     @test supports_kernel(Val(:direct), yukawa)
     @test !supports_kernel(Val(:barneshut), yukawa)
+    @test !supports_kernel(Val(:fmm), yukawa)
     @test_throws ErrorException require_kernel_support(:barneshut, yukawa)
+    @test_throws ErrorException require_kernel_support(:fmm, yukawa)
 end
 
 @testset "Versioned stopwatch logging" begin
@@ -221,10 +224,28 @@ end
         @test_throws ErrorException load_profile(path)
     end
 
-    incompatible_profile = deepcopy(yukawa_profile)
-    incompatible_profile["solver"] = Dict("type" => "barneshut")
+    unsupported_yukawa_barneshut = deepcopy(yukawa_profile)
+    unsupported_yukawa_barneshut["solver"] = Dict("type" => "barneshut")
     mktemp() do path, io
-        TOML.print(io, incompatible_profile)
+        TOML.print(io, unsupported_yukawa_barneshut)
+        close(io)
+        @test_throws ErrorException load_profile(path)
+    end
+
+    supported_coulomb_barneshut = deepcopy(coulomb_profile)
+    supported_coulomb_barneshut["solver"] = Dict("type" => "barneshut")
+    mktemp() do path, io
+        TOML.print(io, supported_coulomb_barneshut)
+        close(io)
+        profile = load_profile(path)
+        @test profile.solver == BarnesHutSolver()
+        @test profile.kernel == Coulomb(12.0, 0.0)
+    end
+
+    unsupported_coulomb_fmm = deepcopy(coulomb_profile)
+    unsupported_coulomb_fmm["solver"] = Dict("type" => "fmm")
+    mktemp() do path, io
+        TOML.print(io, unsupported_coulomb_fmm)
         close(io)
         @test_throws ErrorException load_profile(path)
     end

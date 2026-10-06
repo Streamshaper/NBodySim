@@ -93,7 +93,10 @@ You can monitor the live `.out` log of a queued job before SLURM archives it by 
 
 The interaction kernel defines the force law; the solver determines how the
 interactions are computed. The default kernel is Plummer-softened gravity.
-Kernel settings can be placed in a `[kernel]` table:
+Kernel settings can be placed in a `[kernel]` table. This project keeps a clear
+boundary between exact direct-summation kernels and approximate tree-based
+solvers: the direct solver can evaluate the full force law exactly, while the
+Barnes–Hut and FMM paths remain restricted to the kernels they natively support.
 
 ```toml
 [kernel]
@@ -104,7 +107,8 @@ smoothing = 100.0
 
 For compatibility with existing profiles, `interaction_strength` and
 `smoothing` may still be set in `[simulation]`. Explicit values in `[kernel]`
-take precedence. The direct solver also supports screened Yukawa gravity:
+take precedence. Yukawa gravity is currently available only on the direct
+solver, where the screened force is evaluated exactly:
 
 ```toml
 [kernel]
@@ -114,10 +118,15 @@ smoothing = 100.0
 screening_length = 1.0e6
 ```
 
-Barnes–Hut and FMM currently support only `plummer_gravity`. Selecting another
-kernel with either solver produces an explicit unsupported-kernel error.
-The direct solver also supports Coulomb interactions, where masses determine
-inertia and charges determine electric coupling:
+Barnes–Hut supports `plummer_gravity` and `coulomb` through a charge-aware
+cell approximation built on the AHRB tree. This approximation uses a
+charge-weighted monopole term plus a dipole correction to better capture
+asymmetric charge distributions in far-field Coulomb interactions. It is a
+pragmatic higher-order approximation for the Coulomb kernel, but it is not yet a
+fully native Coulomb multipole implementation with all higher-order moments.
+FMM remains native for `plummer_gravity` only, while Yukawa is intentionally
+restricted to the direct solver. Coulomb interactions use masses for inertia
+and charges for electric coupling:
 
 ```toml
 [kernel]
