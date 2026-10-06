@@ -82,6 +82,18 @@ sbatch scripts/submit.sh default fmm
 
 ```
 
+To submit a benchmark sweep, list each desired `nodes x threads` combination.
+Each pair becomes a separate Slurm job; the optional arguments after `--` are
+passed to `submit.sh` as its profile and solver override:
+
+```bash
+bash scripts/benchmark.sh 1x1 1x2 2x2 2x4 -- default fmm
+```
+
+This example submits four jobs, all using the `default` profile and `fmm`
+solver. The sweep script creates `logs/` if it does not already exist, and
+assigns each job a name containing its node and thread counts.
+
 You can monitor the live `.out` log of a queued job before SLURM archives it by running the included watcher script:
 
 ```bash
