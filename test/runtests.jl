@@ -88,11 +88,14 @@ end
 
 @testset "Versioned stopwatch logging" begin
     mktempdir() do temp_dir
+        other_working_dir = mktempdir(temp_dir)
         cd(temp_dir) do
             mkpath("logs")
             write(joinpath("logs", "stopwatch.csv"), "legacy header\nlegacy row\n")
 
-            withenv("SLURM_CPUS_PER_TASK" => "4", "SLURM_JOB_NUM_NODES" => "2") do
+            withenv("SLURM_SUBMIT_DIR" => temp_dir,
+                    "SLURM_CPUS_PER_TASK" => "4",
+                    "SLURM_JOB_NUM_NODES" => "2") do
                 write_log(DirectSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
                           10, 20, 1.25, 0.0)
             end
@@ -106,16 +109,22 @@ end
             @test lines[2] ==
                   "direct,plummer_gravity,semi_implicit_euler,2,4,10,20,1.25,0.00"
 
-            withenv("SLURM_CPUS_PER_TASK" => "1", "SLURM_JOB_NUM_NODES" => "1") do
-                write_log(FMMSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
-                          10, 20, 2.0, 0.5)
+            cd(other_working_dir) do
+                withenv("SLURM_SUBMIT_DIR" => temp_dir,
+                        "SLURM_CPUS_PER_TASK" => "1",
+                        "SLURM_JOB_NUM_NODES" => "1") do
+                    write_log(FMMSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
+                              10, 20, 2.0, 0.5)
+                end
             end
             @test length(readlines(versioned_path)) == 3
 
             write(versioned_path, "unexpected header\n")
-            @test_throws ErrorException write_log(
-                DirectSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
-                10, 20, 1.25, 0.0)
+            withenv("SLURM_SUBMIT_DIR" => temp_dir) do
+                @test_throws ErrorException write_log(
+                    DirectSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
+                    10, 20, 1.25, 0.0)
+            end
             @test read(versioned_path, String) == "unexpected header\n"
         end
     end

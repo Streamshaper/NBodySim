@@ -249,7 +249,7 @@ Upon completion, the simulation generates the following artifacts:
 
 * **Video Animation (`output/`)**: If `simulation.video_encoding_enabled` is set to `true`, a dual-angle 3D MP4 animation is exported.
 
-* **Stopwatch Log (`logs/stopwatch_v2.csv`)**: If `simulation.logging_enabled` is set to `true`, solver, kernel, integrator, resource counts, particle/step counts, simulation time, and video-encoding time are appended. This versioned file uses a new schema; existing `logs/stopwatch.csv` files are left unchanged. When video encoding is disabled, the encoding time is recorded as `0.00`.
+* **Stopwatch Log (`logs/stopwatch_v2.csv`)**: If `simulation.logging_enabled` is set to `true`, solver, kernel, integrator, resource counts, particle/step counts, simulation time, and video-encoding time are appended. SLURM runs write to the submission directory's `logs/`; local runs write to the repository's `logs/`, independent of the Julia process's current working directory. This versioned file uses a new schema; existing `logs/stopwatch.csv` files are left unchanged. When video encoding is disabled, the encoding time is recorded as `0.00`.
 
 * **Verification Logs (`logs/YYYY-MM-DD/verification_<job_id>.csv`)**: Tracks conservation metrics including center-of-mass drift, relative linear momentum change, relative angular momentum change, and relative total energy change. SLURM runs use the job ID in the filename and are stored in the same date-stamped directory used to archive SLURM job logs. Non-SLURM runs use `verification_local.csv`.
 

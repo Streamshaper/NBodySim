@@ -3,10 +3,17 @@ using Printf
 const STOPWATCH_V2_HEADER =
     "solver,kernel,integrator,node_count,core_count,particle_count,steps,simulation_time,encoding_time"
 
+function stopwatch_v2_path()
+    project_root = normpath(joinpath(@__DIR__, ".."))
+    submit_dir = get(ENV, "SLURM_SUBMIT_DIR", "")
+    log_root = isempty(submit_dir) ? project_root : submit_dir
+    return joinpath(abspath(log_root), "logs", "stopwatch_v2.csv")
+end
+
 function write_log(solver::AbstractSolver, kernel::AbstractKernel, integrator::AbstractIntegrator,
                    num_particles::Int, num_steps::Int, simulation_time::Float64,
                    encoding_time::Float64)
-    stopwatch_file = joinpath("logs", "stopwatch_v2.csv")
+    stopwatch_file = stopwatch_v2_path()
     mkpath(dirname(stopwatch_file))
     core_count = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", string(Sys.CPU_THREADS)))
     node_count = parse(Int, get(ENV, "SLURM_JOB_NUM_NODES", "1"))
