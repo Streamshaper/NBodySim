@@ -401,7 +401,9 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
 
     simulation_time = @elapsed begin
         for step in 1:num_steps
-            tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass), Tuple{Vector{Float64}, Float64}})
+            tree = ahrb(pos, 10, 4; ctxtype = NamedTuple{(:com, :mass, :charge, :charge_com, :dipole),
+                Tuple{Vector{Float64}, Float64, Float64, Vector{Float64}, Vector{Float64}}
+            })
 
             update_mass_com!(tree, masses, charges; kernel = profile.kernel)
             simulation_step_barneshut_mpi!(pos, vel, masses, charges, tree, profile, comm, rank, n_ranks, local_pos_buffer, local_vel_buffer)
