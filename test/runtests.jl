@@ -97,7 +97,7 @@ end
                     "SLURM_CPUS_PER_TASK" => "4",
                     "SLURM_JOB_NUM_NODES" => "2") do
                 write_log(DirectSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
-                          10, 20, 1.25, 0.0)
+                          25_000, 240, 41.81, 0.0)
             end
 
             legacy_path = joinpath("logs", "stopwatch.csv")
@@ -107,17 +107,21 @@ end
             lines = readlines(versioned_path)
             @test lines[1] == STOPWATCH_V2_HEADER
             @test lines[2] ==
-                  "direct,plummer_gravity,semi_implicit_euler,2,4,10,20,1.25,0.00"
+                  "direct,plummer_gravity,semi_implicit_euler,2,4,25000,240,41.81,0.00"
 
             cd(other_working_dir) do
                 withenv("SLURM_SUBMIT_DIR" => temp_dir,
                         "SLURM_CPUS_PER_TASK" => "1",
                         "SLURM_JOB_NUM_NODES" => "1") do
                     write_log(FMMSolver(), PlummerGravity(2.0, 0.5), SemiImplicitEuler(),
-                              10, 20, 2.0, 0.5)
+                              2500, 240, 8.12, 0.0)
                 end
             end
-            @test length(readlines(versioned_path)) == 3
+            @test readlines(versioned_path) == [
+                STOPWATCH_V2_HEADER,
+                "direct,plummer_gravity,semi_implicit_euler,2,4,25000,240,41.81,0.00",
+                "fmm,plummer_gravity,semi_implicit_euler,1,1,2500,240,8.12,0.00"
+            ]
 
             write(versioned_path, "unexpected header\n")
             withenv("SLURM_SUBMIT_DIR" => temp_dir) do

@@ -27,6 +27,7 @@ function write_log(solver::AbstractSolver, kernel::AbstractKernel, integrator::A
             existing_header == STOPWATCH_V2_HEADER ||
                 error("Unexpected header in '$stopwatch_file'; refusing to append stopwatch v2 data")
         end
+        seekend(io)
         simulation_time_string = @sprintf("%.2f", simulation_time)
         encoding_time_string = @sprintf("%.2f", encoding_time)
 
