@@ -140,11 +140,11 @@ end
           PlummerGravity(default_profile.interaction_strength, default_profile.smoothing)
 
     coulomb_example = load_profile(joinpath(@__DIR__, "..", "profiles", "coulomb.toml"))
-    @test coulomb_example.kernel == Coulomb(1.0, 0.01)
+    @test coulomb_example.kernel == Coulomb(1.0, 0.2)
     @test coulomb_example.solver == DirectSolver()
     @test coulomb_example.integrator == SemiImplicitEuler()
-    @test coulomb_example.charges == [1.0, -1.0]
-    @test size(coulomb_example.positions) == (3, 2)
+    @test coulomb_example.charges == [-1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0]
+    @test size(coulomb_example.positions) == (3, 8)
 
     base_profile = Dict(
         "simulation" => Dict("interaction_strength" => 3.0, "smoothing" => 0.25),

@@ -1,17 +1,17 @@
 [simulation]
-timestep = 0.001
-steps = 100
+timestep = 0.0025
+steps = 600
 verification_enabled = true
 verification_energy_max_particles = 2000
 store_data = true
-video_encoding_enabled = false
+video_encoding_enabled = true
 logging_enabled = true
 fps = 30.0
 
 [kernel]
 type = "coulomb"
 interaction_strength = 1.0
-smoothing = 0.01
+smoothing = 0.1
 
 [integrator]
 type = "semi_implicit_euler"
@@ -19,15 +19,31 @@ type = "semi_implicit_euler"
 [solver]
 type = "direct"
 
+[barnes_hut]
+opening_angle = 0.5
+
 [particles]
-# Dimensionless example: two unit masses with opposite unit charges.
+# Dimensionless example: eight alternating charges at the vertices of a cube.
+# The symmetric arrangement starts at rest and evolves under Coulomb forces.
 positions = [
-    [-0.5, 0.0, 0.0],
-    [0.5, 0.0, 0.0],
+    [-1.0, -1.0, -1.0],
+    [1.0, -1.0, -1.0],
+    [1.0, 1.0, -1.0],
+    [-1.0, 1.0, -1.0],
+    [-1.0, -1.0, 1.0],
+    [1.0, -1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [-1.0, 1.0, 1.0],
 ]
 velocities = [
     [0.0, 0.0, 0.0],
     [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
 ]
-masses = [1.0, 1.0]
-charges = [1.0, -1.0]
+masses = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+charges = [-1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0]
