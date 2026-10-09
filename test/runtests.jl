@@ -11,26 +11,12 @@ include(joinpath(@__DIR__, "..", "src", "cli_args.jl"))
     vel = [4.0; 5.0; 6.0;;]
     next_pos = zeros(3, 1)
     next_vel = zeros(3, 1)
-    result = integrate_particle!(SemiImplicitEuler(), next_pos, next_vel, pos, vel, 1,
-                                 (0.5, -1.0, 2.0), 0.25)
+    integrate_particle!(SemiImplicitEuler(), next_pos, next_vel, pos, vel, 1,
+                        (0.5, -1.0, 2.0), 0.25)
     @test next_vel[:, 1] ≈ [4.125, 4.75, 6.5]
     @test next_pos[:, 1] ≈ [2.03125, 3.1875, 4.625]
-    @test result == 4.625
     @test pos[:, 1] == [1.0, 2.0, 3.0]
     @test vel[:, 1] == [4.0, 5.0, 6.0]
-
-    indexed_pos = [1.0 10.0; 2.0 20.0; 3.0 30.0]
-    indexed_vel = [4.0 40.0; 5.0 50.0; 6.0 60.0]
-    reordered_pos = zeros(3, 2)
-    reordered_vel = zeros(3, 2)
-    reordered_result = integrate_particle!(SemiImplicitEuler(), reordered_pos,
-                                           reordered_vel, 1, indexed_pos, indexed_vel,
-                                           2, (0.5, -1.0, 2.0), 0.25)
-    @test reordered_vel[:, 1] ≈ [40.125, 49.75, 60.5]
-    @test reordered_pos[:, 1] ≈ [20.03125, 32.4375, 45.125]
-    @test reordered_result == 45.125
-    @test reordered_pos[:, 2] == zeros(3)
-    @test reordered_vel[:, 2] == zeros(3)
     @test integrator_name(SemiImplicitEuler()) == "semi_implicit_euler"
 end
 

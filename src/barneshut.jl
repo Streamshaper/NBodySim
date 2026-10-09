@@ -161,7 +161,6 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
                                         charges::Vector{Float64}, tree::SpatialTree, profile::SimulationProfile,
                                         comm, rank::Int, n_ranks::Int,
                                         local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
-                                        gathered_pos::Matrix{Float64}, gathered_vel::Matrix{Float64},
                                         gather_counts::Vector{Int})
     
     local_range = mpi_local_range(size(pos, 2), rank, n_ranks)
@@ -169,8 +168,7 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
     fill!(local_pos, 0.0)
     fill!(local_vel, 0.0)
 
-    Threads.@threads :dynamic for idx in local_range
-        i = tree.info.perm[idx]
+    Threads.@threads :dynamic for i in local_range
         px = pos[1, i]
         py = pos[2, i]
         pz = pos[3, i]
@@ -178,22 +176,12 @@ function simulation_step_barneshut_mpi!(pos::Matrix{Float64}, vel::Matrix{Float6
         acc_x, acc_y, acc_z = net_acc(px, py, pz, tree, tree,
                                       profile.barnes_hut_opening_angle, masses,
                                       charges, charges[i], masses[i], profile.kernel)
-        integrate_particle!(profile.integrator, local_pos, local_vel, idx, pos, vel, i,
+        integrate_particle!(profile.integrator, local_pos, local_vel, pos, vel, i,
                             (acc_x, acc_y, acc_z), profile.timestep)
     end
 
-    MPI.Allgatherv!(view(local_pos, :, local_range), MPI.VBuffer(gathered_pos, gather_counts), comm)
-    MPI.Allgatherv!(view(local_vel, :, local_range), MPI.VBuffer(gathered_vel, gather_counts), comm)
-
-    for idx in axes(tree.info.perm, 1)
-        i = tree.info.perm[idx]
-        pos[1, i] = gathered_pos[1, idx]
-        pos[2, i] = gathered_pos[2, idx]
-        pos[3, i] = gathered_pos[3, idx]
-        vel[1, i] = gathered_vel[1, idx]
-        vel[2, i] = gathered_vel[2, idx]
-        vel[3, i] = gathered_vel[3, idx]
-    end
+    MPI.Allgatherv!(view(local_pos, :, local_range), MPI.VBuffer(pos, gather_counts), comm)
+    MPI.Allgatherv!(view(local_vel, :, local_range), MPI.VBuffer(vel, gather_counts), comm)
 end
 
 # Refresh aggregate mass and center of mass for each tree node without intermediate allocations.
@@ -409,8 +397,6 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
 
     local_pos_buffer = zeros(3, num_particles)
     local_vel_buffer = zeros(3, num_particles)
-    gathered_pos_buffer = zeros(3, num_particles)
-    gathered_vel_buffer = zeros(3, num_particles)
     gather_counts = [3 * length(mpi_local_range(num_particles, r, n_ranks)) for r in 0:(n_ranks - 1)]
 
     simulation_time = @elapsed begin
@@ -421,8 +407,7 @@ function run_barneshut_simulation(profile_path::AbstractString="profiles/default
 
             update_mass_com!(tree, masses, charges; kernel = profile.kernel)
             simulation_step_barneshut_mpi!(pos, vel, masses, charges, tree, profile, comm, rank, n_ranks,
-                                           local_pos_buffer, local_vel_buffer, gathered_pos_buffer,
-                                           gathered_vel_buffer, gather_counts)
+                                           local_pos_buffer, local_vel_buffer, gather_counts)
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
                     push!(frames, copy(pos))
