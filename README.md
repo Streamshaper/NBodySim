@@ -2,6 +2,10 @@
 
 NBodySim is a high-performance, Julia-based 3D particle interaction simulation framework. It supports gravitational and Coulomb interactions using multiple algorithmic solvers and is designed for both local execution and distributed computing clusters via MPI and multi-threading.
 
+<p align="center">
+  <img src="assets/FMM_2500p_2400s_perspective.gif" alt="NBodySim FMM simulation">
+</p>
+
 ## Core Features
 
 * **Direct Summation**: A baseline $O(N^2)$ solver for exact pairwise interaction calculations.
@@ -27,7 +31,7 @@ NBodySim is a high-performance, Julia-based 3D particle interaction simulation f
 
 NBodySim requires **Julia 1.11.3** and an MPI implementation (e.g., MPICH or OpenMPI).
 
-The repository utilizes `DrWatson.jl` for environment management. If running on the **Aristotle HPC** (where this project was developed), you must export the following environment variables before downloading or installing Julia packages to ensure proper network routing and stability:
+The repository utilizes `DrWatson.jl` for environment management. If running on **Aristotle HPC** (where this project was developed), you must export the following environment variables before downloading or installing Julia packages to ensure proper network routing and stability:
 
 ```bash
 export JULIA_DOWNLOADS_USE_CURL=true
@@ -81,18 +85,6 @@ profile defaults to `planetary` when omitted.
 sbatch scripts/submit.sh default fmm
 
 ```
-
-To submit a benchmark sweep, list each desired `nodes x threads` combination.
-Each pair becomes a separate Slurm job; the optional arguments after `--` are
-passed to `submit.sh` as its profile and solver override:
-
-```bash
-bash scripts/benchmark.sh 1x1 1x2 2x2 2x4 -- default fmm
-```
-
-This example submits four jobs, all using the `default` profile and `fmm`
-solver. The sweep script creates `logs/` if it does not already exist, and
-assigns each job a name containing its node and thread counts.
 
 You can monitor the live `.out` log of a queued job before SLURM archives it by running the included watcher script:
 
@@ -256,3 +248,28 @@ Upon completion, the simulation generates the following artifacts:
 
 
 Verification can be disabled by setting `simulation.verification_enabled = false`. Total energy uses the selected kernel's pair potential and scales at $O(N^2)$. To maintain performance in large simulations, exact energy is only computed if the particle count is below `simulation.verification_energy_max_particles` (default 2000); otherwise, the energy columns return `NaN` while the $O(N)$ momentum conservation checks remain active.
+
+## Reference Simulation Results
+By utilizing the Barnes-Hut solver, the default profile (25000 particles, 240 steps) was simulated using different hardware configurations on the rome partition of the Aristotle HPC. The relevant simulation times are presented in the table below:
+| Nodes (Ranks) | Threads | Time (seconds) |
+| --- | --- | --- |
+| 1 | 1 | 239.7437 |
+| 1 | 8 | 111.0420 |
+| 1 | 16 | 80.4977 |
+| 1 | 64 | 96.1376 |
+| 2 | 8 | 85.3262 |
+| 2 | 16 | 62.8895 |
+| 2 | 64 | 68.3312 |
+| 4 | 8 | 55.7186 |
+| 4 | 16 | 44.8720 |
+| 4 | 64 | 58.9261 |
+| 8 | 8 | 54.7084 |
+| 8 | 16 | 41.8053 |
+| 8 | 64 | 45.6066 |
+
+## Acknowledgements and Disclaimer
+
+Development and testing of NBodySim made use of Aristotle HPC, the high-performance
+computing facility of Aristotle University of Thessaloniki (AUTh). This
+acknowledgement does not imply that AUTh owns, endorses, or is responsible for
+the framework or its results.
