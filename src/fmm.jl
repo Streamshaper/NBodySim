@@ -100,7 +100,8 @@ function simulation_step_fmm_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, ma
                                   local_pos::Matrix{Float64}, local_vel::Matrix{Float64},
                                   source_system::GravitationalSystem{Float64}, 
                                   target_system::GravitationalSystem{Float64},
-                                  profile::SimulationProfile, comm, local_range)
+                                  profile::SimulationProfile, comm, local_range,
+                                  gather_counts::Vector{Int})
     fill!(local_pos, 0.0)
     fill!(local_vel, 0.0)
 
@@ -125,8 +126,8 @@ function simulation_step_fmm_mpi!(pos::Matrix{Float64}, vel::Matrix{Float64}, ma
                             global_index, acceleration, profile.timestep)
     end
 
-    MPI.Allreduce!(local_pos, pos, +, comm)
-    MPI.Allreduce!(local_vel, vel, +, comm)
+    MPI.Allgatherv!(view(local_pos, :, local_range), MPI.VBuffer(pos, gather_counts), comm)
+    MPI.Allgatherv!(view(local_vel, :, local_range), MPI.VBuffer(vel, gather_counts), comm)
 end
 
 function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml",
@@ -191,6 +192,7 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
     local_range = mpi_local_range(num_particles, rank, n_ranks)
     local_pos = zeros(size(pos))
     local_vel = zeros(size(vel))
+    gather_counts = [3 * length(mpi_local_range(num_particles, r, n_ranks)) for r in 0:(n_ranks - 1)]
 
     # Pre-allocate global source system
     source_system = GravitationalSystem(pos, masses; 
@@ -208,7 +210,8 @@ function run_fmm_simulation(profile_path::AbstractString="profiles/default.toml"
 
     simulation_time = @elapsed begin
         for step in 1:num_steps
-            simulation_step_fmm_mpi!(pos, vel, masses, local_pos, local_vel, source_system, target_system, profile, comm, local_range)
+            simulation_step_fmm_mpi!(pos, vel, masses, local_pos, local_vel, source_system, target_system,
+                                     profile, comm, local_range, gather_counts)
             if rank == 0
                 if profile.video_encoding_enabled || profile.store_data
                     push!(frames, copy(pos))
