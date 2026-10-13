@@ -102,50 +102,16 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
         base_marker_sizes .* (1.0 / view_radii[col]) for col in 1:2
     ]
 
-    # Create separate Observables per view to allow view-specific spherical masking
-    x_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
-    y_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
-    z_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
-
-    total_mass = sum(masses)
-
-    # Helper function to apply spherical masking and update frame positions
-    function update_frame!(frame::Matrix{Float64})
-        norm_frame = frame ./ plot_scale
-        com = sum(norm_frame .* masses', dims=2) ./ total_mass
-        
-        # Calculate distances from current center of mass
-        dx = norm_frame[1, :] .- com[1]
-        dy = norm_frame[2, :] .- com[2]
-        dz = norm_frame[3, :] .- com[3]
-        radii = sqrt.(dx.^2 .+ dy.^2 .+ dz.^2)
-
-        for col in 1:2
-            # Spherical cutoff mask: set out-of-bound particle coordinates to NaN for Makie to skip
-            mask = radii .> view_radii[col]
-            
-            x_c = copy(norm_frame[1, :])
-            y_c = copy(norm_frame[2, :])
-            z_c = copy(norm_frame[3, :])
-
-            x_c[mask] .= NaN
-            y_c[mask] .= NaN
-            z_c[mask] .= NaN
-
-            x_obs[col][] = x_c
-            y_obs[col][] = y_c
-            z_obs[col][] = z_c
-        end
-    end
+    # Observables for particle coordinates across frames
+    x_obs = Observable(frames[1][1, :] ./ plot_scale)
+    y_obs = Observable(frames[1][2, :] ./ plot_scale)
+    z_obs = Observable(frames[1][3, :] ./ plot_scale)
 
     # Attach scatter plots to each axis with their respective view-scaled marker sizes
     for col in 1:2
-        scatter!(axs[col], x_obs[col], y_obs[col], z_obs[col], 
+        scatter!(axs[col], x_obs, y_obs, z_obs, 
                  color = (:white, 0.5), markersize = view_marker_sizes[col])
     end
-
-    # Initialize observables with first frame
-    update_frame!(frames[1])
 
     total_frames = length(frames)
     vid_log_interval = max(1, total_frames ÷ 10)
@@ -156,7 +122,9 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
     # Write the MP4 once the observed positions are ready.
     video_encoding_time = @elapsed begin
         record(fig, out_file, 1:total_frames; framerate = fps) do i
-            update_frame!(frames[i])
+            x_obs[] = frames[i][1, :] ./ plot_scale
+            y_obs[] = frames[i][2, :] ./ plot_scale
+            z_obs[] = frames[i][3, :] ./ plot_scale
 
             if i % vid_log_interval == 0
                 percent = round(Int, (i / total_frames) * 100)
