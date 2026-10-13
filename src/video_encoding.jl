@@ -12,14 +12,17 @@ fraction of the system (0.0 to 1.0).
 function compute_percentile_radius(frame::Matrix{Float64}, masses::Vector{Float64}, 
                                    percentile::Float64; mass_weighted::Bool = true)
     total_mass = sum(masses)
-    # Center of Mass offset
     com = sum(frame .* masses', dims=2) ./ total_mass
     radii = [norm(frame[:, col] .- com) for col in 1:size(frame, 2)]
 
     if mass_weighted
         idx = sortperm(radii)
         cum_mass = cumsum(masses[idx]) ./ total_mass
-        return radii[idx[findfirst(>=(percentile), cum_mass)]]
+        
+        # Safely find first index exceeding percentile, falling back to last element
+        match_idx = findfirst(>=(percentile), cum_mass)
+        target_idx = isnothing(match_idx) ? idx[end] : idx[match_idx]
+        return radii[target_idx]
     else
         return quantile(radii, percentile)
     end
@@ -57,8 +60,8 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
     # Compute bounding radii (with a 1% padding margin)
     # Left view: 100th percentile at simulation end
     # Right view: 60th percentile at initial state
-    r_left  = compute_percentile_radius(norm_end_frame, masses, 1.0; mass_weighted = true) * 1.01
-    r_right = compute_percentile_radius(norm_init_frame, masses, 0.6; mass_weighted = true) * 1.01
+    r_left  = compute_percentile_radius(norm_end_frame, masses, 1.0; mass_weighted = true)
+    r_right = compute_percentile_radius(norm_init_frame, masses, 0.6; mass_weighted = true)
     view_radii = [r_left, r_right]
 
     # Both views set to (60.0°, 35.0°) azimuth and elevation
