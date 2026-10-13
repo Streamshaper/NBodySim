@@ -47,21 +47,23 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
 
     fig = Figure(size = (fig_width, fig_height), backgroundcolor = :black, figure_padding = 0)
 
-    # Ensure the frame data is valid before plotting.
+    # Ensure initial frame data is valid before plotting.
     all(frame -> all(isfinite, frame), frames) ||
         error("Cannot encode video: simulation produced non-finite particle positions")
-    plot_scale = maximum(maximum(abs, frame) for frame in frames)
+    
+    # plot_scale is anchored strictly to the INITIAL frame so that it does not change with step count
+    plot_scale = maximum(abs, frames[1])
     isfinite(plot_scale) && plot_scale > 0 || error("Cannot encode video: particle positions exceed finite plotting limits")
 
-    # Normalized frames for plotting
+    # Normalized initial and final frames for zoom calculations
     norm_init_frame = frames[1] ./ plot_scale
     norm_end_frame = frames[end] ./ plot_scale
 
-    # Compute bounding radii (with a 1% padding margin)
-    # Left view: 100th percentile at simulation end
-    # Right view: 60th percentile at initial state
-    r_left  = compute_percentile_radius(norm_end_frame, masses, 1.0; mass_weighted = true)
-    r_right = compute_percentile_radius(norm_init_frame, masses, 0.6; mass_weighted = true)
+    # Compute bounding radii (with a some padding margin)
+    # Left view: 95th percentile at simulation end
+    # Right view: 65th percentile at initial state
+    r_left  = compute_percentile_radius(norm_end_frame, masses, 0.95; mass_weighted = true) * 1.05
+    r_right = compute_percentile_radius(norm_init_frame, masses, 0.65; mass_weighted = true)
     view_radii = [r_left, r_right]
 
     # Both views set to (60.0°, 35.0°) azimuth and elevation
@@ -97,7 +99,7 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
         base_marker_sizes = (1.5 .+ 10.5 .* mass_scale) .* scale_factor
     end
 
-    # Both views scale marker size independently based on zoom ratio (1.0 / R_view)
+    # Scale marker sizes per view based on zoom level (1.0 / R_view)
     view_marker_sizes = [
         base_marker_sizes .* (1.0 / view_radii[col]) for col in 1:2
     ]
