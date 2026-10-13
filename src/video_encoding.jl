@@ -38,7 +38,11 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
     println("Setting up CairoMakie animation for $file_prefix...")
     flush(stdout)
 
-    fig = Figure(size = (1920, 960), backgroundcolor = :black, figure_padding = 0)
+    # Resolution setup (1920x960) & dynamic marker scale factor relative to 1600x800 baseline
+    fig_width, fig_height = 1920, 960
+    scale_factor = fig_width / 1920.0
+
+    fig = Figure(size = (fig_width, fig_height), backgroundcolor = :black, figure_padding = 0)
 
     # Ensure the frame data is valid before plotting.
     all(frame -> all(isfinite, frame), frames) ||
@@ -51,10 +55,10 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
     norm_end_frame = frames[end] ./ plot_scale
 
     # Compute bounding radii (with a 1% padding margin)
-    # Left view: 95th percentile at simulation end
-    # Right view: 75th percentile at initial state
-    r_left  = compute_percentile_radius(norm_end_frame, masses, 0.95; mass_weighted = true) * 1.01
-    r_right = compute_percentile_radius(norm_init_frame, masses, 0.75; mass_weighted = true) * 1.01
+    # Left view: 100th percentile at simulation end
+    # Right view: 60th percentile at initial state
+    r_left  = compute_percentile_radius(norm_end_frame, masses, 1.0; mass_weighted = true) * 1.01
+    r_right = compute_percentile_radius(norm_init_frame, masses, 0.6; mass_weighted = true) * 1.01
     view_radii = [r_left, r_right]
 
     # Both views set to (60.0°, 35.0°) azimuth and elevation
@@ -79,24 +83,66 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
         hidespines!(ax)
     end
 
-    # Update the scatter points frame by frame.
-    x_obs = Observable(frames[1][1, :] ./ plot_scale)
-    y_obs = Observable(frames[1][2, :] ./ plot_scale)
-    z_obs = Observable(frames[1][3, :] ./ plot_scale)
-
+    # Baseline marker sizes for unit box (R = 1.0) scaled by figure resolution
     min_mass = minimum(masses)
     max_mass = maximum(masses)
 
     if isapprox(min_mass, max_mass)
-        marker_sizes = fill(1.5, length(masses))
+        base_marker_sizes = fill(1.5 * scale_factor, length(masses))
     else
         mass_scale = cbrt.(masses ./ max_mass)
-        marker_sizes = 1.5 .+ 9.0 .* mass_scale
+        base_marker_sizes = (1.5 .+ 10.5 .* mass_scale) .* scale_factor
     end
 
-    for ax in axs
-        scatter!(ax, x_obs, y_obs, z_obs, color = (:white, 0.5), markersize = marker_sizes)
+    # Both views scale marker size independently based on zoom ratio (1.0 / R_view)
+    view_marker_sizes = [
+        base_marker_sizes .* (1.0 / view_radii[col]) for col in 1:2
+    ]
+
+    # Create separate Observables per view to allow view-specific spherical masking
+    x_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
+    y_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
+    z_obs = [Observable(Vector{Float64}(undef, num_particles)) for _ in 1:2]
+
+    total_mass = sum(masses)
+
+    # Helper function to apply spherical masking and update frame positions
+    function update_frame!(frame::Matrix{Float64})
+        norm_frame = frame ./ plot_scale
+        com = sum(norm_frame .* masses', dims=2) ./ total_mass
+        
+        # Calculate distances from current center of mass
+        dx = norm_frame[1, :] .- com[1]
+        dy = norm_frame[2, :] .- com[2]
+        dz = norm_frame[3, :] .- com[3]
+        radii = sqrt.(dx.^2 .+ dy.^2 .+ dz.^2)
+
+        for col in 1:2
+            # Spherical cutoff mask: set out-of-bound particle coordinates to NaN for Makie to skip
+            mask = radii .> view_radii[col]
+            
+            x_c = copy(norm_frame[1, :])
+            y_c = copy(norm_frame[2, :])
+            z_c = copy(norm_frame[3, :])
+
+            x_c[mask] .= NaN
+            y_c[mask] .= NaN
+            z_c[mask] .= NaN
+
+            x_obs[col][] = x_c
+            y_obs[col][] = y_c
+            z_obs[col][] = z_c
+        end
     end
+
+    # Attach scatter plots to each axis with their respective view-scaled marker sizes
+    for col in 1:2
+        scatter!(axs[col], x_obs[col], y_obs[col], z_obs[col], 
+                 color = (:white, 0.5), markersize = view_marker_sizes[col])
+    end
+
+    # Initialize observables with first frame
+    update_frame!(frames[1])
 
     total_frames = length(frames)
     vid_log_interval = max(1, total_frames ÷ 10)
@@ -107,9 +153,7 @@ function encode_video(frames::Vector{Matrix{Float64}}, masses::Vector{Float64},
     # Write the MP4 once the observed positions are ready.
     video_encoding_time = @elapsed begin
         record(fig, out_file, 1:total_frames; framerate = fps) do i
-            x_obs[] = frames[i][1, :] ./ plot_scale
-            y_obs[] = frames[i][2, :] ./ plot_scale
-            z_obs[] = frames[i][3, :] ./ plot_scale
+            update_frame!(frames[i])
 
             if i % vid_log_interval == 0
                 percent = round(Int, (i / total_frames) * 100)
